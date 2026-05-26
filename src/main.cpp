@@ -6,6 +6,7 @@
 #include <vector>
 #include <chrono>
 #include <climits>
+#include <unordered_map>
 
 #include "types.h"
 #include "radio/rtlsdr.h"
@@ -54,6 +55,14 @@ static uint64_t now_ms()
 // updates the aircraft table under g_table_mutex.
 static void dsp_thread_fn()
 {
+    struct CprEntry {
+        uint32_t lat_even{0}, lon_even{0};
+        uint32_t lat_odd{0},  lon_odd{0};
+        uint64_t t_even{0},   t_odd{0};
+        bool has_even{false}, has_odd{false};
+    };
+    static std::unordered_map<uint32_t, CprEntry> cpr_cache;
+
     const uint32_t CHUNK   = 262144;
     const uint32_t MAG_LEN = CHUNK / 2;
 
@@ -92,8 +101,9 @@ static void dsp_thread_fn()
             uint8_t tc = modes_tc(&frame);
             const uint8_t* me = frame.data + 4;
 
+            uint64_t ts = now_ms();
             std::lock_guard<std::mutex> lk(g_table_mutex);
-            Aircraft* ac = table_upsert(frame.icao, now_ms());
+            Aircraft* ac = table_upsert(frame.icao, ts);
 
             if (tc >= 9 && tc <= 18) {
                 // Airborne position (TC 9-18)
@@ -106,21 +116,48 @@ static void dsp_thread_fn()
                 uint32_t lon_cpr = ((uint32_t)(me[4] & 0x01) << 16)
                                  | ((uint32_t)me[5] << 8)
                                  |  me[6];
-                double lat, lon;
-                if (ac->position_valid) {
-                    if (cpr_decode_local(lat_cpr, lon_cpr, odd,
-                                         ac->lat, ac->lon, &lat, &lon)) {
-                        ac->lat = lat;
-                        ac->lon = lon;
 
-                        ac->trail[ac->trail_head] = { ac->lat, ac->lon };
-                        ac->trail_head = (ac->trail_head + 1) % TRAIL_MAX;
-                        if (ac->trail_len < TRAIL_MAX) ac->trail_len++;
-                    }
+                // Update CPR cache for this ICAO
+                CprEntry& entry = cpr_cache[frame.icao];
+                if (odd) {
+                    entry.lat_odd  = lat_cpr;
+                    entry.lon_odd  = lon_cpr;
+                    entry.t_odd    = ts;
+                    entry.has_odd  = true;
                 } else {
-                    // First position: use receiver location as reference
+                    entry.lat_even = lat_cpr;
+                    entry.lon_even = lon_cpr;
+                    entry.t_even   = ts;
+                    entry.has_even = true;
+                }
+
+                // Attempt global decode if both even and odd frames are available
+                // and their timestamps are within 10 000 ms of each other
+                double lat, lon;
+                bool decoded = false;
+                if (entry.has_even && entry.has_odd) {
+                    uint64_t age_diff = entry.t_even > entry.t_odd
+                                      ? entry.t_even - entry.t_odd
+                                      : entry.t_odd  - entry.t_even;
+                    if (age_diff <= 10000) {
+                        int last_odd = odd; // the frame we just received
+                        if (cpr_decode_global(entry.lat_even, entry.lon_even,
+                                              entry.lat_odd,  entry.lon_odd,
+                                              last_odd, &lat, &lon)) {
+                            ac->lat = lat;
+                            ac->lon = lon;
+                            ac->position_valid = true;
+                            decoded = true;
+                        }
+                    }
+                }
+
+                // Fall back to local decode when global is unavailable or fails
+                if (!decoded) {
+                    double ref_lat = ac->position_valid ? ac->lat : HOME_LAT;
+                    double ref_lon = ac->position_valid ? ac->lon : HOME_LON;
                     if (cpr_decode_local(lat_cpr, lon_cpr, odd,
-                                         HOME_LAT, HOME_LON, &lat, &lon)) {
+                                         ref_lat, ref_lon, &lat, &lon)) {
                         ac->lat = lat;
                         ac->lon = lon;
                         ac->position_valid = true;
