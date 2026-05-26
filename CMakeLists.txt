@@ -10,9 +10,24 @@ pkg_check_modules(RTLSDR librtlsdr)
 pkg_check_modules(SDL2 sdl2)
 
 if(RTLSDR_FOUND AND SDL2_FOUND)
-    file(GLOB_RECURSE SOURCES src/*.cpp)
-
-    add_executable(lpt ${SOURCES})
+    set(LPT_SOURCES
+        src/main.cpp
+        src/radio/rtlsdr.cpp
+        src/radio/ring_buffer.cpp
+        src/dsp/mag.cpp
+        src/dsp/preamble.cpp
+        src/dsp/demod.cpp
+        src/decoder/modes.cpp
+        src/decoder/crc.cpp
+        src/decoder/cpr.cpp
+        src/decoder/altitude.cpp
+        src/decoder/velocity.cpp
+        src/decoder/callsign.cpp
+        src/tracker/aircraft_table.cpp
+        src/renderer/map.cpp
+        src/renderer/aircraft.cpp
+    )
+    add_executable(lpt ${LPT_SOURCES})
 
     target_include_directories(lpt PRIVATE
         src
