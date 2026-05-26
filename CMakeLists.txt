@@ -5,10 +5,13 @@ set(VENDOR_DIR ${CMAKE_SOURCE_DIR}/vendor)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(VENDOR_DIR ${CMAKE_SOURCE_DIR}/vendor)
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(RTLSDR librtlsdr)
 pkg_check_modules(SDL2 sdl2)
 
+# ── lpt: SDL2 native display ──────────────────────────────────────────────────
 if(RTLSDR_FOUND AND SDL2_FOUND)
     set(LPT_SOURCES
         src/main.cpp
@@ -43,7 +46,7 @@ if(RTLSDR_FOUND AND SDL2_FOUND)
 
     target_compile_options(lpt PRIVATE -Wall -Wextra -O2)
 else()
-    message(STATUS "librtlsdr or SDL2 not found — skipping main lpt target")
+    message(STATUS "librtlsdr or SDL2 not found — skipping lpt target")
 endif()
 
 # ── lpt-web: HTTP server mode (no SDL2 required) ─────────────────────────────
@@ -53,6 +56,7 @@ if(RTLSDR_FOUND)
         src/web/server.cpp
         src/radio/rtlsdr.cpp
         src/radio/ring_buffer.cpp
+        src/dsp/mag.cpp
         src/dsp/preamble.cpp
         src/dsp/demod.cpp
         src/decoder/modes.cpp
