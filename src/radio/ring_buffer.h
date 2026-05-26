@@ -1,16 +1,14 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
+#include <atomic>
 
-// Lock-free single-producer single-consumer ring buffer for IQ bytes
-// Sized as a power of two for efficient masking
-
-#define RING_BUFFER_SIZE (1 << 22)  // 4MB — tune to taste
+#define RING_BUFFER_SIZE (1 << 22)  // 4MB
 
 struct RingBuffer {
-    uint8_t  data[RING_BUFFER_SIZE];
-    uint32_t head;  // written by producer
-    uint32_t tail;  // read by consumer
+    uint8_t                  data[RING_BUFFER_SIZE];
+    std::atomic<uint32_t>    head{0};
+    std::atomic<uint32_t>    tail{0};
 };
 
 void     rb_init(RingBuffer* rb);
