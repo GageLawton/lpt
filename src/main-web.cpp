@@ -1,18 +1,21 @@
-// src/main-web.cpp — web-mode entry point (no SDL2)
-#include <cmath>
 #include <cstdio>
-#include <csignal>
+#include <cstdlib>
 #include <cstring>
+#include <cstdint>
 #include <thread>
 #include <atomic>
 #include <mutex>
 #include <vector>
 #include <chrono>
 #include <climits>
+#include <string>
+#include <csignal>
+#include <unordered_map>
 
 #include "types.h"
 #include "radio/rtlsdr.h"
 #include "radio/ring_buffer.h"
+#include "dsp/mag.h"
 #include "dsp/preamble.h"
 #include "dsp/demod.h"
 #include "decoder/modes.h"
@@ -26,21 +29,11 @@
 
 static const uint32_t ADSB_FREQ_HZ     = 1090000000U;
 static const uint32_t ADSB_SAMPLE_RATE = 2000000U;
-static const double   HOME_LAT         = 37.7749;
-static const double   HOME_LON         = -122.4194;
 
 static RingBuffer        g_ring;
 static std::atomic<bool> g_running{true};
 static std::mutex        g_table_mutex;
-
-static void iq_to_mag(const uint8_t* iq, uint32_t iq_len, float* out)
-{
-    for (uint32_t i = 0; i < iq_len / 2; i++) {
-        float I = (float)iq[2*i]   - 127.5f;
-        float Q = (float)iq[2*i+1] - 127.5f;
-        out[i] = hypotf(I, Q);
-    }
-}
+static WebStats          g_stats;
 
 static uint64_t now_ms()
 {
@@ -57,6 +50,9 @@ static void dsp_thread_fn()
     std::vector<uint8_t> raw(CHUNK);
     std::vector<float>   mag(MAG_LEN);
     uint8_t bits[112];
+
+    uint64_t sec_start    = now_ms();
+    uint32_t msgs_this_sec = 0;
 
     while (g_running) {
         uint32_t got = rb_pop(&g_ring, raw.data(), CHUNK);
@@ -91,12 +87,9 @@ static void dsp_thread_fn()
 
             std::lock_guard<std::mutex> lk(g_table_mutex);
             Aircraft* ac = table_upsert(frame.icao, now_ms());
+            msgs_this_sec++;
 
-            if (tc >= 1 && tc <= 4) {
-                char cs[9];
-                if (callsign_decode(me, cs))
-                    memcpy(ac->callsign, cs, sizeof(ac->callsign));
-            } else if (tc >= 9 && tc <= 18) {
+            if (tc >= 9 && tc <= 18) {
                 int odd = (me[2] >> 2) & 1;
                 uint32_t lat_cpr = ((uint32_t)(me[2] & 0x03) << 15)
                                  | ((uint32_t)me[3] << 7)
@@ -104,28 +97,20 @@ static void dsp_thread_fn()
                 uint32_t lon_cpr = ((uint32_t)(me[4] & 0x01) << 16)
                                  | ((uint32_t)me[5] << 8)
                                  |  me[6];
+
+                double ref_lat = ac->position_valid ? ac->lat : 37.7749;
+                double ref_lon = ac->position_valid ? ac->lon : -122.4194;
                 double lat, lon;
-                if (ac->position_valid) {
-                    if (cpr_decode_local(lat_cpr, lon_cpr, odd,
-                                         ac->lat, ac->lon, &lat, &lon)) {
-                        ac->lat = lat;
-                        ac->lon = lon;
-                        ac->trail[ac->trail_head] = { ac->lat, ac->lon };
-                        ac->trail_head = (ac->trail_head + 1) % TRAIL_MAX;
-                        if (ac->trail_len < TRAIL_MAX) ac->trail_len++;
-                    }
-                } else {
-                    if (cpr_decode_local(lat_cpr, lon_cpr, odd,
-                                         HOME_LAT, HOME_LON, &lat, &lon)) {
-                        ac->lat = lat;
-                        ac->lon = lon;
-                        ac->position_valid = true;
-                    }
+                if (cpr_decode_local(lat_cpr, lon_cpr, odd, ref_lat, ref_lon, &lat, &lon)) {
+                    ac->lat = lat;
+                    ac->lon = lon;
+                    ac->position_valid = true;
                 }
-                uint16_t alt_raw = ((uint16_t)(me[1] & 0xFF) << 4)
-                                 |  (me[2] >> 4);
+
+                uint16_t alt_raw = ((uint16_t)(me[1] & 0xFF) << 4) | (me[2] >> 4);
                 int32_t alt = altitude_decode_gillham(alt_raw);
                 if (alt != INT32_MIN) ac->altitude_ft = alt;
+
             } else if (tc == 19) {
                 float spd, hdg;
                 int32_t vr;
@@ -134,9 +119,19 @@ static void dsp_thread_fn()
                     ac->heading_deg    = hdg;
                     ac->vert_rate_fpm  = vr;
                 }
+            } else if (tc >= 1 && tc <= 4) {
+                callsign_decode(me, ac->callsign);
             }
 
             pos += (uint32_t)frame_len * 8 * 2;
+        }
+
+        uint64_t now = now_ms();
+        if (now - sec_start >= 1000) {
+            g_stats.msgs_last_sec.store(msgs_this_sec);
+            g_stats.msgs_total.fetch_add(msgs_this_sec);
+            msgs_this_sec = 0;
+            sec_start = now;
         }
     }
 }
@@ -146,31 +141,107 @@ static void radio_cb(const uint8_t* buf, uint32_t len)
     rb_push(&g_ring, buf, len);
 }
 
-int main()
+static void print_usage(const char* prog)
 {
-    printf("lpt-web — ADS-B Plane Tracker\n");
-    printf("Tuning to %.0f MHz...\n", ADSB_FREQ_HZ / 1e6);
+    printf("Usage: %s [OPTIONS]\n\n", prog);
+    printf("  --port N       HTTP server port (default: 8080)\n");
+    printf("  --lat DEG      Receiver latitude in decimal degrees (default: 37.7749)\n");
+    printf("  --lon DEG      Receiver longitude in decimal degrees (default: -122.4194)\n");
+    printf("  --label STR    Receiver label shown on scope (default: HOME)\n");
+    printf("  --replay FILE  Replay raw IQ capture file instead of live hardware\n");
+    printf("  --help         Print this message and exit\n");
+}
+
+int main(int argc, char* argv[])
+{
+    ServerConfig cfg;
+    cfg.center_lat     = 37.7749;
+    cfg.center_lon     = -122.4194;
+    cfg.receiver_label = "HOME";
+    std::string replay_path;
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--help") { print_usage(argv[0]); return 0; }
+        if (i + 1 < argc) {
+            if      (arg == "--port")   { cfg.port           = std::atoi(argv[++i]); continue; }
+            else if (arg == "--lat")    { cfg.center_lat     = std::atof(argv[++i]); continue; }
+            else if (arg == "--lon")    { cfg.center_lon     = std::atof(argv[++i]); continue; }
+            else if (arg == "--label")  { cfg.receiver_label = argv[++i];            continue; }
+            else if (arg == "--replay") { replay_path        = argv[++i];            continue; }
+        }
+    }
+
+    printf("lpt-web — ADS-B Browser Tracker\n");
+    printf("Receiver : %.4f, %.4f (%s)\n",
+           cfg.center_lat, cfg.center_lon, cfg.receiver_label.c_str());
+    printf("Web UI   : http://localhost:%d\n", cfg.port);
 
     rb_init(&g_ring);
-    if (rtlsdr_init(ADSB_FREQ_HZ, ADSB_SAMPLE_RATE) < 0) return 1;
+    g_stats.start_ms.store(now_ms());
 
-    signal(SIGINT,  [](int){ server_stop(); });
-    signal(SIGTERM, [](int){ server_stop(); });
+    // Signal handler only sets a flag — all other work is done in the watcher
+    // thread below, keeping the signal handler async-signal-safe.
+    static volatile sig_atomic_t g_got_signal = 0;
+    struct sigaction sa{};
+    sa.sa_handler = [](int) { g_got_signal = 1; };
+    sa.sa_flags   = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT,  &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
 
-    std::thread radio_thread([]() { rtlsdr_start(radio_cb); });
     std::thread dsp_thread(dsp_thread_fn);
+    std::thread radio_thread;
 
-    ServerConfig cfg;
-    cfg.center_lat     = HOME_LAT;
-    cfg.center_lon     = HOME_LON;
-    cfg.receiver_label = "HOME";
-    printf("Listening at http://localhost:%d\n", cfg.port);
-    server_run(cfg, g_table_mutex);   // blocks until SIGINT / SIGTERM
+    // Watcher: polls the signal flag and shuts down cleanly from a normal thread.
+    std::thread watcher([]() {
+        while (!g_got_signal && g_running)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        g_running = false;
+        server_stop();
+    });
 
-    g_running = false;
-    rtlsdr_stop();
-    radio_thread.join();
+    if (!replay_path.empty()) {
+        // Replay mode: feed a raw IQ capture file through the ring buffer
+        printf("Replay   : %s\n", replay_path.c_str());
+        radio_thread = std::thread([&replay_path]() {
+            FILE* f = fopen(replay_path.c_str(), "rb");
+            if (!f) {
+                perror("replay: fopen");
+                g_running = false;
+                server_stop();
+                return;
+            }
+            std::vector<uint8_t> buf(262144);
+            while (g_running) {
+                size_t n = fread(buf.data(), 1, buf.size(), f);
+                if (n == 0) { rewind(f); continue; }
+                rb_push(&g_ring, buf.data(), (uint32_t)n);
+                // ~130 ms per 262144-byte chunk approximates 2 MSPS real-time
+                std::this_thread::sleep_for(std::chrono::milliseconds(130));
+            }
+            fclose(f);
+        });
+    } else {
+        if (rtlsdr_init(ADSB_FREQ_HZ, ADSB_SAMPLE_RATE) < 0) {
+            fprintf(stderr, "rtlsdr_init failed — is an RTL-SDR dongle attached?\n");
+            fprintf(stderr, "Tip: use --replay <file> to run without hardware.\n");
+            g_running = false;
+            dsp_thread.join();
+            return 1;
+        }
+        radio_thread = std::thread([]() { rtlsdr_start(radio_cb); });
+    }
+
+    server_run(cfg, g_table_mutex, g_stats);   // blocks until server_stop() is called
+
+    g_running = false;   // tell watcher and dsp_thread to exit if not already set
+    watcher.join();
+    if (replay_path.empty()) {
+        rtlsdr_stop();
+        rtlsdr_close();
+    }
+    if (radio_thread.joinable()) radio_thread.join();
     dsp_thread.join();
-    rtlsdr_close();
     return 0;
 }

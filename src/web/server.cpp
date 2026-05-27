@@ -1,127 +1,162 @@
 #include "server.h"
 #include "../tracker/aircraft_table.h"
-#include "../types.h"
-
-#include <atomic>
-#include <chrono>
+#include "httplib.h"
 #include <cstdio>
-#include <mutex>
-#include <sstream>
+#include <cstring>
 #include <string>
 #include <thread>
+#include <chrono>
 
-#include "httplib.h"
+static httplib::Server* g_svr = nullptr;
 
-static std::atomic<bool>   s_running{false};
-static httplib::Server*    s_svr    = nullptr;
-
-// ── JSON serialisation ────────────────────────────────────────────────────────
-
-struct JsonCtx {
-    std::ostringstream& out;
-    bool first = true;
-};
-
-static void aircraft_to_json(const Aircraft* ac, void* raw)
+static std::string mime_for(const std::string& path)
 {
-    auto* ctx = static_cast<JsonCtx*>(raw);
-    if (!ctx->first) ctx->out << ",";
-    ctx->first = false;
-
-    char hex[7];
-    snprintf(hex, sizeof(hex), "%06X", ac->icao);
-
-    ctx->out << "{\"icao\":\"" << hex << "\""
-             << ",\"cs\":\""   << ac->callsign << "\""
-             << ",\"lat\":"    << ac->lat
-             << ",\"lon\":"    << ac->lon
-             << ",\"alt\":"    << ac->altitude_ft
-             << ",\"spd\":"    << ac->groundspeed_kt
-             << ",\"hdg\":"    << ac->heading_deg
-             << ",\"vs\":"     << ac->vert_rate_fpm
-             << ",\"msgsRx\":" << ac->msgs_rx
-             << ",\"firstSeenMs\":" << ac->first_seen_ms
-             << ",\"lastSeenMs\":"  << ac->last_seen_ms
-             << ",\"trail\":[";
-
-    int start = (ac->trail_len == TRAIL_MAX) ? ac->trail_head : 0;
-    for (int i = 0; i < ac->trail_len; i++) {
-        int idx = (start + i) % TRAIL_MAX;
-        if (i > 0) ctx->out << ",";
-        ctx->out << "{\"lat\":" << ac->trail[idx].lat
-                 << ",\"lon\":" << ac->trail[idx].lon << "}";
-    }
-    ctx->out << "]}";
+    auto ends = [&](const char* s) {
+        size_t pl = path.size(), sl = strlen(s);
+        return pl >= sl && path.compare(pl - sl, sl, s) == 0;
+    };
+    if (ends(".html")) return "text/html";
+    if (ends(".css"))  return "text/css";
+    if (ends(".js"))   return "application/javascript";
+    if (ends(".jsx"))  return "application/javascript";
+    return "application/octet-stream";
 }
 
-static std::string build_json(const ServerConfig& cfg,
-                              std::mutex& table_mutex,
-                              uint64_t uptime_s)
+static std::string read_file(const std::string& path)
 {
-    std::ostringstream body;
-    body << "{\"receiver\":{\"lat\":"  << cfg.center_lat
-         << ",\"lon\":"               << cfg.center_lon
-         << ",\"label\":\""           << cfg.receiver_label << "\"},"
-         << "\"stats\":{\"uptimeSec\":" << uptime_s << "},"
-         << "\"planes\":[";
-
-    JsonCtx ctx{body};
-    {
-        std::lock_guard<std::mutex> lk(table_mutex);
-        table_for_each(aircraft_to_json, &ctx);
-    }
-    body << "]}";
-    return body.str();
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return "";
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    if (sz <= 0) { fclose(f); return ""; }
+    rewind(f);
+    std::string buf((size_t)sz, '\0');
+    if (fread(&buf[0], 1, (size_t)sz, f) != (size_t)sz) buf.clear();
+    fclose(f);
+    return buf;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
-void server_run(const ServerConfig& cfg, std::mutex& table_mutex)
+static std::string json_escape(const std::string& s)
 {
-    s_running = true;
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == '"')       out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else                out += c;
+    }
+    return out;
+}
 
-    auto start_ms = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()).count();
+static std::string aircraft_to_json(const Aircraft* ac)
+{
+    char icao[7];
+    snprintf(icao, sizeof(icao), "%06X", ac->icao);
 
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"icao\":\"%s\",\"cs\":\"%s\","
+        "\"lat\":%.6f,\"lon\":%.6f,"
+        "\"alt\":%d,\"spd\":%.1f,\"hdg\":%.1f,"
+        "\"vs\":%d,\"msgsRx\":%u,"
+        "\"firstSeenMs\":%llu,\"lastSeenMs\":%llu,"
+        "\"trail\":[]}",
+        icao,
+        ac->callsign[0] ? ac->callsign : "",
+        ac->lat, ac->lon,
+        (int)ac->altitude_ft,
+        (double)ac->groundspeed_kt,
+        (double)ac->heading_deg,
+        (int)ac->vert_rate_fpm,
+        (unsigned)ac->msgs_rx,
+        (unsigned long long)ac->first_seen_ms,
+        (unsigned long long)ac->last_seen_ms);
+    return buf;
+}
+
+void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stats)
+{
     httplib::Server svr;
-    s_svr = &svr;
+    g_svr = &svr;
 
-    // Serve static files from web_dir
-    if (!svr.set_mount_point("/", cfg.web_dir)) {
-        fprintf(stderr, "[server] web_dir '%s' not found — static files unavailable\n",
-                cfg.web_dir.c_str());
-    }
+    // Root — serve index.html
+    svr.Get("/", [&](const httplib::Request&, httplib::Response& res) {
+        std::string body = read_file(cfg.web_dir + "/index.html");
+        if (body.empty()) { res.status = 404; res.set_content("Not found", "text/plain"); return; }
+        res.set_content(body, "text/html");
+    });
 
-    // SSE stream: push aircraft JSON every second
+    // SSE stream — push aircraft state ~1/sec
     svr.Get("/events", [&](const httplib::Request&, httplib::Response& res) {
-        res.set_chunked_content_provider(
-            "text/event-stream",
+        res.set_header("Cache-Control", "no-cache");
+        res.set_header("X-Accel-Buffering", "no");
+        res.set_chunked_content_provider("text/event-stream",
             [&](size_t, httplib::DataSink& sink) -> bool {
-                if (!s_running) return false;
+                std::string planes_json;
+                {
+                    std::lock_guard<std::mutex> lk(table_mutex);
+                    table_for_each([](const Aircraft* ac, void* ctx) {
+                        if (!ac->position_valid) return;
+                        std::string* out = static_cast<std::string*>(ctx);
+                        if (!out->empty() && out->back() != '[') *out += ",";
+                        *out += aircraft_to_json(ac);
+                    }, &planes_json);
+                }
 
-                auto now_ms = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now().time_since_epoch()).count();
-                uint64_t uptime_s = (now_ms - start_ms) / 1000;
+                uint64_t uptime_ms = 0;
+                uint64_t t0 = stats.start_ms.load();
+                if (t0 > 0) {
+                    using namespace std::chrono;
+                    uint64_t now = (uint64_t)duration_cast<milliseconds>(
+                        steady_clock::now().time_since_epoch()).count();
+                    uptime_ms = now > t0 ? now - t0 : 0;
+                }
 
-                std::string json = build_json(cfg, table_mutex, uptime_s);
-                std::string msg  = "data: " + json + "\n\n";
+                std::string label_esc = json_escape(cfg.receiver_label);
+                char hdr[512];
+                snprintf(hdr, sizeof(hdr),
+                    "{\"receiver\":{\"lat\":%.6f,\"lon\":%.6f,\"label\":\"%s\"},"
+                    "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"uptimeSec\":%.1f},"
+                    "\"planes\":[",
+                    cfg.center_lat, cfg.center_lon, label_esc.c_str(),
+                    (unsigned long long)stats.msgs_total.load(),
+                    (unsigned int)stats.msgs_last_sec.load(),
+                    uptime_ms / 1000.0);
 
-                if (!sink.write(msg.c_str(), msg.size())) return false;
+                std::string event = "data: ";
+                event += hdr;
+                event += planes_json;
+                event += "]}\n\n";
 
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                if (!sink.write(event.c_str(), event.size())) return false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 return true;
-            }
-        );
+            });
+    });
+
+    // Aircraft selection — client POSTs when user clicks a blip
+    svr.Post(R"(/select/([0-9A-Fa-f]+))",
+        [](const httplib::Request&, httplib::Response& res) {
+            res.set_content("ok", "text/plain");
+        });
+
+    // Static file handler (catch-all, must be last)
+    svr.Get(R"(/(.+))", [&](const httplib::Request& req, httplib::Response& res) {
+        std::string path = cfg.web_dir + "/" + req.matches[1].str();
+        // Prevent path traversal
+        if (path.find("..") != std::string::npos) {
+            res.status = 400; return;
+        }
+        std::string body = read_file(path);
+        if (body.empty()) { res.status = 404; res.set_content("Not found", "text/plain"); return; }
+        res.set_content(body, mime_for(path));
     });
 
     svr.listen("0.0.0.0", cfg.port);
-
-    s_svr     = nullptr;
-    s_running = false;
+    g_svr = nullptr;
 }
 
 void server_stop()
 {
-    s_running = false;
-    if (s_svr) s_svr->stop();
+    if (g_svr) g_svr->stop();
 }
