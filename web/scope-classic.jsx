@@ -45,8 +45,10 @@ function ScopeClassic({ w = 1280, h = 800 }) {
   // selected aircraft — null until first SSE batch arrives
   const [selectedIcao, setSelectedIcao] = React.useState(null);
 
-  // Show connecting state before first SSE batch arrives (planes array empty)
-  if (sim.planes.length === 0) {
+  // "Connecting..." only before the first SSE event arrives.
+  // Once uptimeSec > 0 the server is up; empty planes just means no aircraft in range.
+  const isConnecting = sim.planes.length === 0 && (!sim.stats || sim.stats.uptimeSec === 0);
+  if (isConnecting) {
     return (
       <div style={{
         width: w, height: h, background: pal.bg, color: pal.dim,
@@ -59,8 +61,8 @@ function ScopeClassic({ w = 1280, h = 800 }) {
     );
   }
 
-  // Resolve selected: fall back to first plane if nothing explicitly chosen
-  const selected = sim.planes.find((p) => p.icao === selectedIcao) ?? sim.planes[0];
+  // Resolve selected: null when no planes are visible (server up, none in range)
+  const selected = sim.planes.find((p) => p.icao === selectedIcao) ?? sim.planes[0] ?? null;
 
   // sweep
   const tNow = performance.now();
@@ -174,7 +176,7 @@ function ScopeClassic({ w = 1280, h = 800 }) {
                 {/* planes */}
                 {visiblePlanes.map((p) => {
                   const s = project(p.lat, p.lon);
-                  const isSel = p.icao === selected.icao;
+                  const isSel = selected !== null && p.icao === selected.icao;
                   return (
                     <g key={p.icao} style={{ cursor: 'pointer' }} onClick={() => setSelectedIcao(p.icao)}>
                       {/* selection halo */}
@@ -272,7 +274,7 @@ function ScopeClassicSidebar({ w, h, sim, pal, selected, onSelect, project, maxN
           {sorted.map((p) => {
             const s = project(p.lat, p.lon);
             const rngNm = Math.hypot(s.x - 380, s.y - 380) * (maxNm / 366);
-            const isSel = p.icao === selected.icao;
+            const isSel = selected !== null && p.icao === selected.icao;
             return (
               <div key={p.icao}
                 onClick={() => onSelect(p.icao)}
@@ -294,35 +296,41 @@ function ScopeClassicSidebar({ w, h, sim, pal, selected, onSelect, project, maxN
 
       {/* SELECTED AIRCRAFT */}
       <div style={{ borderTop: `1px solid ${pal.faint}`, padding: '12px 14px', minHeight: 160 }}>
-        <div style={{ fontSize: 9, color: pal.dim, letterSpacing: 1.5, marginBottom: 6 }}>SELECTED · ICAO {fmt.icao(selected.icao)}</div>
-        <div style={{ fontSize: 28, fontWeight: 700, color: pal.fg, textShadow: `0 0 8px ${pal.glow}`, letterSpacing: 1 }}>
-          {selected.cs}
-        </div>
-        <div style={{ fontSize: 10.5, color: pal.dim, marginTop: 2, display: 'flex', gap: 12 }}>
-          {selected.model && <span>{selected.model}</span>}
-          {selected.model && <span>·</span>}
-          {selected.kind  && <span>{selected.kind.toUpperCase()}</span>}
-          {selected.kind  && <span>·</span>}
-          {selected.squawk != null && <span>SQK {selected.squawk}</span>}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 12, fontSize: 11 }}>
-          {[
-            ['ALT', `${Math.round(selected.alt ?? 0).toLocaleString()}ft`],
-            ['SPD', `${Math.round(selected.spd ?? 0)}kt`],
-            ['HDG', `${fmt.hdg(selected.hdg ?? 0)}°`],
-            ['V/S', `${(selected.vs ?? 0) > 0 ? '+' : ''}${Math.round((selected.vs ?? 0) / 100) * 100}fpm`],
-            ['LAT', (selected.lat ?? 0).toFixed(4)],
-            ['LON', (selected.lon ?? 0).toFixed(4)],
-          ].map(([k, v]) => (
-            <div key={k} style={{ padding: '6px 8px', border: `1px solid ${pal.faint}` }}>
-              <div style={{ fontSize: 8.5, color: pal.dim, letterSpacing: 1 }}>{k}</div>
-              <div style={{ color: pal.fg, marginTop: 2 }}>{v}</div>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: 8, fontSize: 9.5, color: pal.dim }}>
-          MSGS {selected.msgsRx ?? 0} · LAST SEEN {(selected.lastSeenMs ? ((Date.now() - selected.lastSeenMs) / 1000).toFixed(1) : '—')}s
-        </div>
+        {selected === null ? (
+          <div style={{ fontSize: 9, color: pal.dim, letterSpacing: 1.5, paddingTop: 8 }}>
+            NO AIRCRAFT IN RANGE
+          </div>
+        ) : (<>
+          <div style={{ fontSize: 9, color: pal.dim, letterSpacing: 1.5, marginBottom: 6 }}>SELECTED · ICAO {fmt.icao(selected.icao)}</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: pal.fg, textShadow: `0 0 8px ${pal.glow}`, letterSpacing: 1 }}>
+            {selected.cs}
+          </div>
+          <div style={{ fontSize: 10.5, color: pal.dim, marginTop: 2, display: 'flex', gap: 12 }}>
+            {selected.model && <span>{selected.model}</span>}
+            {selected.model && <span>·</span>}
+            {selected.kind  && <span>{selected.kind.toUpperCase()}</span>}
+            {selected.kind  && <span>·</span>}
+            {selected.squawk != null && <span>SQK {selected.squawk}</span>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 12, fontSize: 11 }}>
+            {[
+              ['ALT', `${Math.round(selected.alt ?? 0).toLocaleString()}ft`],
+              ['SPD', `${Math.round(selected.spd ?? 0)}kt`],
+              ['HDG', `${fmt.hdg(selected.hdg ?? 0)}°`],
+              ['V/S', `${(selected.vs ?? 0) > 0 ? '+' : ''}${Math.round((selected.vs ?? 0) / 100) * 100}fpm`],
+              ['LAT', (selected.lat ?? 0).toFixed(4)],
+              ['LON', (selected.lon ?? 0).toFixed(4)],
+            ].map(([k, v]) => (
+              <div key={k} style={{ padding: '6px 8px', border: `1px solid ${pal.faint}` }}>
+                <div style={{ fontSize: 8.5, color: pal.dim, letterSpacing: 1 }}>{k}</div>
+                <div style={{ color: pal.fg, marginTop: 2 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 9.5, color: pal.dim }}>
+            MSGS {selected.msgsRx ?? 0} · LAST SEEN {(selected.lastSeenMs ? ((Date.now() - selected.lastSeenMs) / 1000).toFixed(1) : '—')}s
+          </div>
+        </>)}
       </div>
     </div>
   );

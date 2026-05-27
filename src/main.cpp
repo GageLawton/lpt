@@ -11,6 +11,7 @@
 #include "types.h"
 #include "radio/rtlsdr.h"
 #include "radio/ring_buffer.h"
+#include "dsp/mag.h"
 #include "dsp/preamble.h"
 #include "dsp/demod.h"
 #include "decoder/modes.h"
@@ -18,6 +19,7 @@
 #include "decoder/cpr.h"
 #include "decoder/altitude.h"
 #include "decoder/velocity.h"
+#include "decoder/callsign.h"
 #include "renderer/map.h"
 #include "renderer/aircraft.h"
 #include "tracker/aircraft_table.h"
@@ -33,16 +35,6 @@ static const double   HOME_LON         = -122.4194;
 static RingBuffer        g_ring;
 static std::atomic<bool> g_running{true};
 static std::mutex        g_table_mutex;
-
-// Inline IQ → magnitude (avoids adding mag.h dependency before issue #8 lands)
-static void iq_to_mag(const uint8_t* iq, uint32_t iq_len, float* out)
-{
-    for (uint32_t i = 0; i < iq_len / 2; i++) {
-        float I = (float)iq[2*i]   - 127.5f;
-        float Q = (float)iq[2*i+1] - 127.5f;
-        out[i] = hypotf(I, Q);
-    }
-}
 
 static uint64_t now_ms()
 {
@@ -199,6 +191,9 @@ static void dsp_thread_fn()
                     ac->heading_deg    = hdg;
                     ac->vert_rate_fpm  = vr;
                 }
+            } else if (tc >= 1 && tc <= 4) {
+                // Aircraft identification — callsign
+                callsign_decode(me, ac->callsign);
             }
 
             pos += (uint32_t)frame_len * 8 * 2;
