@@ -15,6 +15,7 @@ struct ServerConfig {
 struct WebStats {
     std::atomic<uint64_t> msgs_total{0};
     std::atomic<uint32_t> msgs_last_sec{0};
+    std::atomic<uint32_t> crc_fail_last_sec{0};
     std::atomic<uint64_t> start_ms{0};
 };
 

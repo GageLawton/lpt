@@ -51,8 +51,9 @@ static void dsp_thread_fn()
     std::vector<float>   mag(MAG_LEN);
     uint8_t bits[112];
 
-    uint64_t sec_start    = now_ms();
-    uint32_t msgs_this_sec = 0;
+    uint64_t sec_start         = now_ms();
+    uint32_t msgs_this_sec     = 0;
+    uint32_t crc_fail_this_sec = 0;
 
     while (g_running) {
         uint32_t got = rb_pop(&g_ring, raw.data(), CHUNK);
@@ -80,7 +81,7 @@ static void dsp_thread_fn()
                     raw_bytes[i] |= bits[i * 8 + b] << (7 - b);
 
             ModeSFrame frame{};
-            if (!modes_parse(raw_bytes, frame_len, &frame)) { pos++; continue; }
+            if (!modes_parse(raw_bytes, frame_len, &frame)) { crc_fail_this_sec++; pos++; continue; }
 
             uint8_t tc = modes_tc(&frame);
             const uint8_t* me = frame.data + 4;
@@ -130,7 +131,9 @@ static void dsp_thread_fn()
         if (now - sec_start >= 1000) {
             g_stats.msgs_last_sec.store(msgs_this_sec);
             g_stats.msgs_total.fetch_add(msgs_this_sec);
-            msgs_this_sec = 0;
+            g_stats.crc_fail_last_sec.store(crc_fail_this_sec);
+            msgs_this_sec     = 0;
+            crc_fail_this_sec = 0;
             sec_start = now;
         }
     }

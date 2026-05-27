@@ -100,7 +100,7 @@ function ScopeClassic({ w = 1280, h = 800 }) {
         fontSize: 11, letterSpacing: 2, textTransform: 'uppercase',
       }}>
         <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>◉ LPT</span>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>◉ LPT — {sim.RECEIVER?.label ?? 'HOME'}</span>
           <span style={{ color: pal.dim }}>ADS-B SCOPE · 1090.000 MHz · 2.0 MS/s</span>
         </div>
         <div style={{ display: 'flex', gap: 18, color: pal.dim }}>
@@ -163,7 +163,7 @@ function ScopeClassic({ w = 1280, h = 800 }) {
 
                 {/* trails: dots that age out, brightness based on sweep angle */}
                 {visiblePlanes.flatMap((p) =>
-                  p.trail.slice(-8).map((t, i, arr) => {
+                  (p.trail ?? []).slice(-knobs.trailLength).map((t, i, arr) => {
                     const s = project(t.lat, t.lon);
                     const age = (arr.length - i) / arr.length;
                     return (

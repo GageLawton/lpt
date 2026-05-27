@@ -116,11 +116,12 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
                 char hdr[512];
                 snprintf(hdr, sizeof(hdr),
                     "{\"receiver\":{\"lat\":%.6f,\"lon\":%.6f,\"label\":\"%s\"},"
-                    "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"uptimeSec\":%.1f},"
+                    "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"crcFailLastSec\":%u,\"uptimeSec\":%.1f},"
                     "\"planes\":[",
                     cfg.center_lat, cfg.center_lon, label_esc.c_str(),
                     (unsigned long long)stats.msgs_total.load(),
                     (unsigned int)stats.msgs_last_sec.load(),
+                    (unsigned int)stats.crc_fail_last_sec.load(),
                     uptime_ms / 1000.0);
 
                 std::string event = "data: ";
