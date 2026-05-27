@@ -71,6 +71,19 @@ static void dsp_thread_fn()
     uint8_t bits[112];
 
     while (g_running) {
+        // Evict stale CPR cache entries every ~5 s to prevent unbounded growth
+        {
+            static uint64_t last_purge = 0;
+            uint64_t now = now_ms();
+            if (now - last_purge >= 5000) {
+                for (auto it = cpr_cache.begin(); it != cpr_cache.end(); ) {
+                    uint64_t age = std::max(it->second.t_even, it->second.t_odd);
+                    it = (now - age > 60000) ? cpr_cache.erase(it) : std::next(it);
+                }
+                last_purge = now;
+            }
+        }
+
         uint32_t got = rb_pop(&g_ring, raw.data(), CHUNK);
         if (got < 32) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -161,7 +174,15 @@ static void dsp_thread_fn()
                         ac->lat = lat;
                         ac->lon = lon;
                         ac->position_valid = true;
+                        decoded = true;
                     }
+                }
+
+                // Record position in trail buffer whenever a decode succeeded
+                if (decoded) {
+                    ac->trail[ac->trail_head] = { ac->lat, ac->lon };
+                    ac->trail_head = (ac->trail_head + 1) % TRAIL_MAX;
+                    if (ac->trail_len < TRAIL_MAX) ac->trail_len++;
                 }
 
                 uint16_t alt_raw = ((uint16_t)(me[1] & 0xFF) << 4)
