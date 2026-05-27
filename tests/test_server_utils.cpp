@@ -3,30 +3,7 @@
 #include <cstring>
 #include <string>
 
-static std::string json_escape(const std::string& s)
-{
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"')       out += "\\\"";
-        else if (c == '\\') out += "\\\\";
-        else                out += c;
-    }
-    return out;
-}
-
-static std::string mime_for(const std::string& path)
-{
-    auto ends = [&](const char* s) {
-        size_t pl = path.size(), sl = strlen(s);
-        return pl >= sl && path.compare(pl - sl, sl, s) == 0;
-    };
-    if (ends(".html")) return "text/html";
-    if (ends(".css"))  return "text/css";
-    if (ends(".js"))   return "application/javascript";
-    if (ends(".jsx"))  return "application/javascript";
-    return "application/octet-stream";
-}
+#include "../src/web/server.cpp"
 
 int main()
 {
@@ -34,6 +11,12 @@ int main()
     assert(json_escape("say \"hi\"") == "say \\\"hi\\\"");
     assert(json_escape("a\\b") == "a\\\\b");
     assert(json_escape("") == "");
+
+    Aircraft ac{};
+    ac.icao = 0xABCDEF;
+    std::strncpy(ac.callsign, "A\"B\\C", sizeof(ac.callsign) - 1);
+    std::string aircraft_json = aircraft_to_json(&ac);
+    assert(aircraft_json.find("\"cs\":\"A\\\"B\\\\C\"") != std::string::npos);
 
     assert(mime_for("index.html") == "text/html");
     assert(mime_for("style.css") == "text/css");

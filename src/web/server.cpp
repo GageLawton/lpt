@@ -62,7 +62,7 @@ static std::string aircraft_to_json(const Aircraft* ac)
         "\"firstSeenMs\":%llu,\"lastSeenMs\":%llu,"
         "\"trail\":[]}",
         icao,
-        ac->callsign[0] ? ac->callsign : "",
+        json_escape(ac->callsign[0] ? ac->callsign : "").c_str(),
         ac->lat, ac->lon,
         (int)ac->altitude_ft,
         (double)ac->groundspeed_kt,
