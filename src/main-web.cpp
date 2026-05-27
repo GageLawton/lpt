@@ -117,6 +117,7 @@ static void dsp_thread_fn()
                 if (velocity_decode(me, &spd, &hdg, &vr)) {
                     ac->groundspeed_kt = spd;
                     ac->heading_deg    = hdg;
+                    ac->vert_rate_fpm  = vr;
                 }
             } else if (tc >= 1 && tc <= 4) {
                 callsign_decode(me, ac->callsign);
@@ -179,11 +180,26 @@ int main(int argc, char* argv[])
     rb_init(&g_ring);
     g_stats.start_ms.store(now_ms());
 
-    signal(SIGINT,  [](int){ server_stop(); g_running = false; });
-    signal(SIGTERM, [](int){ server_stop(); g_running = false; });
+    // Signal handler only sets a flag — all other work is done in the watcher
+    // thread below, keeping the signal handler async-signal-safe.
+    static volatile sig_atomic_t g_got_signal = 0;
+    struct sigaction sa{};
+    sa.sa_handler = [](int) { g_got_signal = 1; };
+    sa.sa_flags   = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT,  &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
 
     std::thread dsp_thread(dsp_thread_fn);
     std::thread radio_thread;
+
+    // Watcher: polls the signal flag and shuts down cleanly from a normal thread.
+    std::thread watcher([]() {
+        while (!g_got_signal && g_running)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        g_running = false;
+        server_stop();
+    });
 
     if (!replay_path.empty()) {
         // Replay mode: feed a raw IQ capture file through the ring buffer
@@ -217,9 +233,10 @@ int main(int argc, char* argv[])
         radio_thread = std::thread([]() { rtlsdr_start(radio_cb); });
     }
 
-    server_run(cfg, g_table_mutex, g_stats);   // blocks until SIGINT/SIGTERM
+    server_run(cfg, g_table_mutex, g_stats);   // blocks until server_stop() is called
 
-    g_running = false;
+    g_running = false;   // tell watcher and dsp_thread to exit if not already set
+    watcher.join();
     if (replay_path.empty()) {
         rtlsdr_stop();
         rtlsdr_close();

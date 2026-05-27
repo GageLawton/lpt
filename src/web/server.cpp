@@ -36,6 +36,18 @@ static std::string read_file(const std::string& path)
     return buf;
 }
 
+static std::string json_escape(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == '"')       out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else                out += c;
+    }
+    return out;
+}
+
 static std::string aircraft_to_json(const Aircraft* ac)
 {
     char icao[7];
@@ -46,7 +58,7 @@ static std::string aircraft_to_json(const Aircraft* ac)
         "{\"icao\":\"%s\",\"cs\":\"%s\","
         "\"lat\":%.6f,\"lon\":%.6f,"
         "\"alt\":%d,\"spd\":%.1f,\"hdg\":%.1f,"
-        "\"vs\":0,\"msgsRx\":0,"
+        "\"vs\":%d,\"msgsRx\":%u,"
         "\"firstSeenMs\":%llu,\"lastSeenMs\":%llu,"
         "\"trail\":[]}",
         icao,
@@ -55,7 +67,9 @@ static std::string aircraft_to_json(const Aircraft* ac)
         (int)ac->altitude_ft,
         (double)ac->groundspeed_kt,
         (double)ac->heading_deg,
-        (unsigned long long)ac->last_seen_ms,
+        (int)ac->vert_rate_fpm,
+        (unsigned)ac->msgs_rx,
+        (unsigned long long)ac->first_seen_ms,
         (unsigned long long)ac->last_seen_ms);
     return buf;
 }
@@ -81,7 +95,6 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
                 std::string planes_json;
                 {
                     std::lock_guard<std::mutex> lk(table_mutex);
-                    bool first = true;
                     table_for_each([](const Aircraft* ac, void* ctx) {
                         if (!ac->position_valid) return;
                         std::string* out = static_cast<std::string*>(ctx);
@@ -99,12 +112,13 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
                     uptime_ms = now > t0 ? now - t0 : 0;
                 }
 
+                std::string label_esc = json_escape(cfg.receiver_label);
                 char hdr[512];
                 snprintf(hdr, sizeof(hdr),
                     "{\"receiver\":{\"lat\":%.6f,\"lon\":%.6f,\"label\":\"%s\"},"
                     "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"uptimeSec\":%.1f},"
                     "\"planes\":[",
-                    cfg.center_lat, cfg.center_lon, cfg.receiver_label.c_str(),
+                    cfg.center_lat, cfg.center_lon, label_esc.c_str(),
                     (unsigned long long)stats.msgs_total.load(),
                     (unsigned int)stats.msgs_last_sec.load(),
                     uptime_ms / 1000.0);
