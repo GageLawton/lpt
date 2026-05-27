@@ -1,11 +1,14 @@
 #include <cstdio>
+#include <cstdlib>
 #include <cstdint>
+#include <cstring>
 #include <thread>
 #include <atomic>
 #include <mutex>
 #include <vector>
 #include <chrono>
 #include <climits>
+#include <string>
 #include <unordered_map>
 
 #include "types.h"
@@ -28,9 +31,11 @@ static const uint32_t ADSB_FREQ_HZ     = 1090000000U;
 static const uint32_t ADSB_SAMPLE_RATE = 2000000U;
 static const int      MAP_W            = 1024;
 static const int      MAP_H            = 768;
-// Default centre — user can override via argv in a future issue
-static const double   HOME_LAT         = 37.7749;
-static const double   HOME_LON         = -122.4194;
+static const double   DEFAULT_LAT      = 37.7749;
+static const double   DEFAULT_LON      = -122.4194;
+
+static double g_home_lat = DEFAULT_LAT;
+static double g_home_lon = DEFAULT_LON;
 
 static RingBuffer        g_ring;
 static std::atomic<bool> g_running{true};
@@ -159,8 +164,8 @@ static void dsp_thread_fn()
 
                 // Fall back to local decode when global is unavailable or fails
                 if (!decoded) {
-                    double ref_lat = ac->position_valid ? ac->lat : HOME_LAT;
-                    double ref_lon = ac->position_valid ? ac->lon : HOME_LON;
+                    double ref_lat = ac->position_valid ? ac->lat : g_home_lat;
+                    double ref_lon = ac->position_valid ? ac->lon : g_home_lon;
                     if (cpr_decode_local(lat_cpr, lon_cpr, odd,
                                          ref_lat, ref_lon, &lat, &lon)) {
                         ac->lat = lat;
@@ -207,25 +212,68 @@ static void radio_cb(const uint8_t* buf, uint32_t len)
     rb_push(&g_ring, buf, len);
 }
 
-int main()
+static void print_usage(const char* prog)
 {
+    printf("Usage: %s [OPTIONS]\n\n", prog);
+    printf("  --lat DEG      Receiver latitude in decimal degrees (default: %.4f)\n", DEFAULT_LAT);
+    printf("  --lon DEG      Receiver longitude in decimal degrees (default: %.4f)\n", DEFAULT_LON);
+    printf("  --label STR    Receiver label shown on scope (default: HOME)\n");
+    printf("  --replay FILE  Replay raw IQ capture file instead of live hardware\n");
+    printf("  --help         Print this message and exit\n");
+}
+
+int main(int argc, char* argv[])
+{
+    std::string replay_path;
+    std::string receiver_label = "HOME";
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--help") { print_usage(argv[0]); return 0; }
+        if (i + 1 < argc) {
+            if      (arg == "--lat")    { g_home_lat      = std::atof(argv[++i]); continue; }
+            else if (arg == "--lon")    { g_home_lon      = std::atof(argv[++i]); continue; }
+            else if (arg == "--label")  { receiver_label  = argv[++i];            continue; }
+            else if (arg == "--replay") { replay_path     = argv[++i];            continue; }
+        }
+        fprintf(stderr, "Unknown option: %s\n", arg.c_str());
+        print_usage(argv[0]);
+        return 1;
+    }
+
     printf("lpt \xe2\x80\x94 ADS-B Plane Tracker\n");
-    printf("Tuning to %.0f MHz...\n", ADSB_FREQ_HZ / 1e6);
+    printf("Receiver : %.4f, %.4f (%s)\n", g_home_lat, g_home_lon, receiver_label.c_str());
 
     rb_init(&g_ring);
 
-    if (map_init(MAP_W, MAP_H, HOME_LAT, HOME_LON) < 0) {
+    if (map_init(MAP_W, MAP_H, g_home_lat, g_home_lon) < 0) {
         fprintf(stderr, "SDL2 init failed\n");
         return 1;
     }
 
-    if (rtlsdr_init(ADSB_FREQ_HZ, ADSB_SAMPLE_RATE) < 0) {
-        map_close();
-        return 1;
+    std::thread radio_thread;
+    if (!replay_path.empty()) {
+        printf("Replay   : %s\n", replay_path.c_str());
+        radio_thread = std::thread([&replay_path]() {
+            FILE* f = fopen(replay_path.c_str(), "rb");
+            if (!f) { perror("replay: fopen"); g_running = false; return; }
+            std::vector<uint8_t> buf(262144);
+            while (g_running) {
+                size_t n = fread(buf.data(), 1, buf.size(), f);
+                if (n == 0) { rewind(f); continue; }
+                rb_push(&g_ring, buf.data(), (uint32_t)n);
+                std::this_thread::sleep_for(std::chrono::milliseconds(130));
+            }
+            fclose(f);
+        });
+    } else {
+        if (rtlsdr_init(ADSB_FREQ_HZ, ADSB_SAMPLE_RATE) < 0) {
+            map_close();
+            return 1;
+        }
+        radio_thread = std::thread([]() { rtlsdr_start(radio_cb); });
     }
 
-    // Radio thread: rtlsdr_start blocks until rtlsdr_stop() is called.
-    std::thread radio_thread([]() { rtlsdr_start(radio_cb); });
     std::thread dsp_thread(dsp_thread_fn);
 
     // Render loop on the main thread (~10 Hz).
@@ -244,10 +292,13 @@ int main()
         SDL_Delay(100);
     }
 
-    rtlsdr_stop();
-    radio_thread.join();
+    g_running = false;
+    if (replay_path.empty()) {
+        rtlsdr_stop();
+        rtlsdr_close();
+    }
+    if (radio_thread.joinable()) radio_thread.join();
     dsp_thread.join();
-    rtlsdr_close();
     map_close();
     return 0;
 }

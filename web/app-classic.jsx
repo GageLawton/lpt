@@ -27,7 +27,8 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "scanlines": 0.6,
   "sweepSpeed": 12,
   "glow": 1,
-  "vignette": 0.85
+  "vignette": 0.85,
+  "trailLength": 20
 }/*EDITMODE-END*/;
 
 // ── viewport scaler — center 1280×800 on screen, letterbox black ──
@@ -54,7 +55,7 @@ function Stage({ children, w, h }) {
 
 // global tweak knobs we expose on window so ScopeClassic can read them without
 // having to thread props through (and so this file owns all tweaking surface).
-window.LPT_KNOBS = { scanlines: 0.6, sweepSpeed: 12, glow: 1, vignette: 0.85 };
+window.LPT_KNOBS = { scanlines: 0.6, sweepSpeed: 12, glow: 1, vignette: 0.85, trailLength: 20 };
 
 function App() {
   React.useEffect(() => { applyPalette(TWEAK_DEFAULTS.palette); }, []);
@@ -62,9 +63,9 @@ function App() {
 
   React.useEffect(() => { applyPalette(t.palette); }, [t.palette]);
   React.useEffect(() => {
-    window.LPT_KNOBS = { scanlines: t.scanlines, sweepSpeed: t.sweepSpeed, glow: t.glow, vignette: t.vignette };
+    window.LPT_KNOBS = { scanlines: t.scanlines, sweepSpeed: t.sweepSpeed, glow: t.glow, vignette: t.vignette, trailLength: t.trailLength };
     window.dispatchEvent(new Event('lpt-knobs'));
-  }, [t.scanlines, t.sweepSpeed, t.glow, t.vignette]);
+  }, [t.scanlines, t.sweepSpeed, t.glow, t.vignette, t.trailLength]);
 
   return (
     <>
@@ -91,6 +92,11 @@ function App() {
             onChange={(v) => t.setTweak('vignette', v)} />
           <TweakSlider label="Sweep"     value={t.sweepSpeed} unit="s" min={4} max={30} step={1}
             onChange={(v) => t.setTweak('sweepSpeed', v)} />
+        </TweakSection>
+
+        <TweakSection label="Tracks">
+          <TweakSlider label="Trail pts" value={t.trailLength} min={5} max={100} step={5}
+            onChange={(v) => t.setTweak('trailLength', v)} />
         </TweakSection>
       </TweaksPanel>
     </>
