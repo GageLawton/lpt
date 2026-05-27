@@ -48,6 +48,34 @@ RTL-SDR hardware
 - SDL2
 - CMake 3.16+
 
+
+## Web display (lpt-web)
+
+The project also includes a browser-based aircraft scope using `lpt-web`.
+
+### Build
+
+```bash
+# Requires: cmake 3.16+, librtlsdr, g++
+cmake -B build
+cmake --build build --target lpt-web
+```
+
+### Run
+
+```bash
+./build/lpt-web
+# Open http://localhost:8080 in your browser
+```
+
+### Architecture
+
+`lpt-web` streams decoded aircraft data from the C++ ADS-B processing pipeline to a browser-based CRT scope using Server-Sent Events (SSE). The pipeline includes RTL-SDR signal capture, DSP processing, Mode S decoding, aircraft tracking, and live browser rendering.
+
+## Screenshots
+
+Add a screenshot of the CRT scope running with live data.
+
 ## License
 
 MIT

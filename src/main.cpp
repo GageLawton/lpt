@@ -194,6 +194,7 @@ int main()
     rtlsdr_stop();
     radio_thread.join();
     dsp_thread.join();
+    rtlsdr_close();
     map_close();
     return 0;
 }
