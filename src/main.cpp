@@ -1,3 +1,4 @@
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
@@ -36,6 +37,8 @@ static const double   DEFAULT_LON      = -122.4194;
 
 static double g_home_lat = DEFAULT_LAT;
 static double g_home_lon = DEFAULT_LON;
+
+static volatile sig_atomic_t g_got_signal = 0;
 
 static RingBuffer        g_ring;
 static std::atomic<bool> g_running{true};
@@ -252,6 +255,16 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    // Install signal handlers before spawning threads so no early signal is missed.
+    {
+        struct sigaction sa{};
+        sa.sa_handler = [](int) { g_got_signal = 1; };
+        sa.sa_flags   = SA_RESTART;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGINT,  &sa, nullptr);
+        sigaction(SIGTERM, &sa, nullptr);
+    }
+
     std::thread radio_thread;
     if (!replay_path.empty()) {
         printf("Replay   : %s\n", replay_path.c_str());
@@ -278,7 +291,7 @@ int main(int argc, char* argv[])
     std::thread dsp_thread(dsp_thread_fn);
 
     // Render loop on the main thread (~10 Hz).
-    while (g_running) {
+    while (g_running && !g_got_signal) {
         { std::lock_guard<std::mutex> lk(g_table_mutex); table_expire(now_ms(), 60000); }
         map_draw_background();
         map_draw_range_rings(50.0f);
