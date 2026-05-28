@@ -43,6 +43,59 @@ RTL-SDR hardware
 
 ---
 
+## Hardware setup
+
+### RTL-SDR dongle
+
+Any RTL2832U-based USB dongle works. Well-tested options:
+
+- **RTL-SDR Blog V3 / V4** — best sensitivity, 1090 MHz SMA connector
+- **Nooelec NESDR Smart** — good budget option
+- **Generic DVB-T sticks** — work but are noisier
+
+Pair the dongle with a **1090 MHz bandpass filter + antenna** for best range. A simple quarter-wave monopole (~6.9 cm wire) on a ground plane works, but a dedicated ADS-B antenna significantly improves coverage.
+
+### Linux driver install
+
+```bash
+sudo apt-get install librtlsdr-dev rtl-sdr
+```
+
+### udev rules (run without sudo)
+
+Create `/etc/udev/rules.d/rtl-sdr.rules`:
+
+```
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2832", GROUP="plugdev", MODE="0664"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2838", GROUP="plugdev", MODE="0664"
+```
+
+Then reload and add your user to `plugdev`:
+
+```bash
+sudo udevadm control --reload-rules
+sudo usermod -aG plugdev $USER
+# Log out and back in for the group change to take effect
+```
+
+### Blacklist the DVB-T kernel module
+
+The generic DVB-T driver claims the device and prevents rtl-sdr from opening it:
+
+```bash
+echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf
+sudo modprobe -r dvb_usb_rtl28xxu
+```
+
+### Verify the dongle is detected
+
+```bash
+rtl_test -t
+# Should print: Found 1 device(s): ...
+```
+
+---
+
 ## Dependencies
 
 - librtlsdr

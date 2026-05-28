@@ -8,7 +8,10 @@ bool cpr_decode_global(uint32_t lat_even, uint32_t lon_even,
                        int      last_odd, // 1 if odd frame arrived last
                        double*  lat_out,  double* lon_out);
 
-// Decode locally using a single frame and a reference position
+// Decode locally using a single frame and a reference position.
+// Set surface=true for TC 5-8 surface position messages (smaller CPR zone).
+// Returns false if decoded position is implausibly far from reference (>3°).
 bool cpr_decode_local(uint32_t lat_cpr, uint32_t lon_cpr, int odd,
                       double ref_lat, double ref_lon,
-                      double* lat_out, double* lon_out);
+                      double* lat_out, double* lon_out,
+                      bool surface = false);

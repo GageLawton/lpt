@@ -30,6 +30,7 @@ if(RTLSDR_FOUND AND SDL2_FOUND)
         src/decoder/altitude.cpp
         src/decoder/velocity.cpp
         src/decoder/callsign.cpp
+        src/decoder/surface.cpp
         src/tracker/aircraft_table.cpp
         src/renderer/map.cpp
         src/renderer/aircraft.cpp
@@ -69,6 +70,7 @@ if(RTLSDR_FOUND)
         src/decoder/altitude.cpp
         src/decoder/velocity.cpp
         src/decoder/callsign.cpp
+        src/decoder/surface.cpp
         src/tracker/aircraft_table.cpp
     )
 
@@ -147,3 +149,22 @@ target_include_directories(test_server_traversal PRIVATE src ${VENDOR_DIR})
 target_compile_options(test_server_traversal PRIVATE -Wall -Wextra -O2)
 target_link_libraries(test_server_traversal PRIVATE pthread)
 add_test(NAME test_server_traversal COMMAND test_server_traversal)
+
+add_executable(test_ring_buffer tests/test_ring_buffer.cpp src/radio/ring_buffer.cpp)
+target_include_directories(test_ring_buffer PRIVATE src)
+target_compile_options(test_ring_buffer PRIVATE -Wall -Wextra -O2)
+add_test(NAME test_ring_buffer COMMAND test_ring_buffer)
+
+add_executable(test_e2e_decode
+    tests/test_e2e_decode.cpp
+    src/decoder/modes.cpp
+    src/decoder/crc.cpp
+    src/decoder/cpr.cpp
+    src/decoder/altitude.cpp
+    src/decoder/velocity.cpp
+    src/decoder/callsign.cpp
+    src/decoder/surface.cpp
+)
+target_include_directories(test_e2e_decode PRIVATE src)
+target_compile_options(test_e2e_decode PRIVATE -Wall -Wextra -O2)
+add_test(NAME test_e2e_decode COMMAND test_e2e_decode)

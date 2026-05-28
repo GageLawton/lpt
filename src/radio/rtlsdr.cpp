@@ -10,7 +10,7 @@ static void rtlsdr_callback(unsigned char* buf, uint32_t len, void*)
     if (s_cb) s_cb(buf, len);
 }
 
-int rtlsdr_init(uint32_t freq_hz, uint32_t sample_rate_hz)
+int rtlsdr_init(uint32_t freq_hz, uint32_t sample_rate_hz, int gain_tenth_db)
 {
     if (rtlsdr_open(&s_dev, 0) < 0) {
         fprintf(stderr, "[rtlsdr] Failed to open device\n");
@@ -18,7 +18,16 @@ int rtlsdr_init(uint32_t freq_hz, uint32_t sample_rate_hz)
     }
     rtlsdr_set_sample_rate(s_dev, sample_rate_hz);
     rtlsdr_set_center_freq(s_dev, freq_hz);
-    rtlsdr_set_agc_mode(s_dev, 1);
+    if (gain_tenth_db < 0) {
+        rtlsdr_set_tuner_gain_mode(s_dev, 0); // auto AGC
+        rtlsdr_set_agc_mode(s_dev, 1);
+        printf("[rtlsdr] Gain: auto\n");
+    } else {
+        rtlsdr_set_tuner_gain_mode(s_dev, 1); // manual
+        rtlsdr_set_agc_mode(s_dev, 0);
+        rtlsdr_set_tuner_gain(s_dev, gain_tenth_db);
+        printf("[rtlsdr] Gain: %.1f dB\n", gain_tenth_db / 10.0);
+    }
     rtlsdr_reset_buffer(s_dev);
     printf("[rtlsdr] Tuned to %.1f MHz @ %.1f MSPS\n",
            freq_hz / 1e6, sample_rate_hz / 1e6);

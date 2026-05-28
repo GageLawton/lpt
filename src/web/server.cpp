@@ -48,21 +48,22 @@ static std::string json_escape(const std::string& s)
     return out;
 }
 
-static std::string aircraft_to_json(const Aircraft* ac)
+static std::string aircraft_to_json(const Aircraft* ac, uint64_t now_ms)
 {
     char icao[7];
     snprintf(icao, sizeof(icao), "%06X", ac->icao);
 
     std::string cs = json_escape(ac->callsign[0] ? ac->callsign : "");
+    uint64_t age_ms = (now_ms > ac->last_seen_ms) ? now_ms - ac->last_seen_ms : 0;
 
-    char hdr[384];
+    char hdr[512];
     snprintf(hdr, sizeof(hdr),
         "{\"icao\":\"%s\",\"cs\":\"%s\","
         "\"lat\":%.6f,\"lon\":%.6f,"
         "\"alt\":%d,\"spd\":%.1f,\"hdg\":%.1f,"
         "\"vs\":%d,\"msgsRx\":%u,"
         "\"firstSeenMs\":%llu,\"lastSeenMs\":%llu,"
-        "\"trail\":[",
+        "\"posAgeMs\":%llu,",
         icao, cs.c_str(),
         ac->lat, ac->lon,
         (int)ac->altitude_ft,
@@ -71,13 +72,29 @@ static std::string aircraft_to_json(const Aircraft* ac)
         (int)ac->vert_rate_fpm,
         (unsigned)ac->msgs_rx,
         (unsigned long long)ac->first_seen_ms,
-        (unsigned long long)ac->last_seen_ms);
+        (unsigned long long)ac->last_seen_ms,
+        (unsigned long long)age_ms);
 
     std::string out = hdr;
+
+    // Optional fields — only emitted when set
+    if (ac->emitter_cat != 0) {
+        char tmp[32]; snprintf(tmp, sizeof(tmp), "\"cat\":%u,", ac->emitter_cat);
+        out += tmp;
+    }
+    if (ac->squawk != 0) {
+        char tmp[32]; snprintf(tmp, sizeof(tmp), "\"sqk\":\"%04u\",", ac->squawk);
+        out += tmp;
+    }
+    if (ac->emergency_state != 0) {
+        char tmp[32]; snprintf(tmp, sizeof(tmp), "\"emrg\":%u,", ac->emergency_state);
+        out += tmp;
+    }
 
     // Serialize trail circular buffer oldest-to-newest.
     // trail_head is the next-write slot; oldest entry is at
     // (trail_head + TRAIL_MAX - trail_len) % TRAIL_MAX.
+    out += "\"trail\":[";
     int start = (ac->trail_head + TRAIL_MAX - ac->trail_len) % TRAIL_MAX;
     for (int i = 0; i < ac->trail_len; i++) {
         int idx = (start + i) % TRAIL_MAX;
@@ -108,37 +125,40 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
         res.set_header("X-Accel-Buffering", "no");
         res.set_chunked_content_provider("text/event-stream",
             [&](size_t, httplib::DataSink& sink) -> bool {
+                using namespace std::chrono;
+                uint64_t now_ms = (uint64_t)duration_cast<milliseconds>(
+                    steady_clock::now().time_since_epoch()).count();
+
+                struct AcCtx { std::string* out; uint64_t now_ms; };
                 std::string planes_json;
+                AcCtx ac_ctx = { &planes_json, now_ms };
                 {
                     std::lock_guard<std::mutex> lk(table_mutex);
                     table_for_each([](const Aircraft* ac, void* ctx) {
                         if (!ac->position_valid) return;
-                        std::string* out = static_cast<std::string*>(ctx);
-                        if (!out->empty() && out->back() != '[') *out += ",";
-                        *out += aircraft_to_json(ac);
-                    }, &planes_json);
+                        auto* c = static_cast<AcCtx*>(ctx);
+                        if (!c->out->empty() && c->out->back() != '[') *c->out += ",";
+                        *c->out += aircraft_to_json(ac, c->now_ms);
+                    }, &ac_ctx);
                 }
 
-                uint64_t uptime_ms = 0;
                 uint64_t t0 = stats.start_ms.load();
-                if (t0 > 0) {
-                    using namespace std::chrono;
-                    uint64_t now = (uint64_t)duration_cast<milliseconds>(
-                        steady_clock::now().time_since_epoch()).count();
-                    uptime_ms = now > t0 ? now - t0 : 0;
-                }
+                uint64_t uptime_ms = (t0 > 0 && now_ms > t0) ? now_ms - t0 : 0;
 
                 std::string label_esc = json_escape(cfg.receiver_label);
                 char hdr[512];
                 snprintf(hdr, sizeof(hdr),
                     "{\"receiver\":{\"lat\":%.6f,\"lon\":%.6f,\"label\":\"%s\"},"
-                    "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"crcFailLastSec\":%u,\"uptimeSec\":%.1f},"
+                    "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"crcFailLastSec\":%u,"
+                    "\"uptimeSec\":%.1f,\"bufOverflows\":%u,\"bufFillPct\":%u},"
                     "\"planes\":[",
                     cfg.center_lat, cfg.center_lon, label_esc.c_str(),
                     (unsigned long long)stats.msgs_total.load(),
                     (unsigned int)stats.msgs_last_sec.load(),
                     (unsigned int)stats.crc_fail_last_sec.load(),
-                    uptime_ms / 1000.0);
+                    uptime_ms / 1000.0,
+                    (unsigned int)stats.buf_overflows.load(),
+                    (unsigned int)stats.buf_fill_pct.load());
 
                 std::string event = "data: ";
                 event += hdr;
