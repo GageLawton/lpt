@@ -54,7 +54,10 @@ static std::string aircraft_to_json(const Aircraft* ac, uint64_t now_ms)
     snprintf(icao, sizeof(icao), "%06X", ac->icao);
 
     std::string cs = json_escape(ac->callsign[0] ? ac->callsign : "");
-    uint64_t age_ms = (now_ms > ac->last_seen_ms) ? now_ms - ac->last_seen_ms : 0;
+    // posAgeMs reflects only position freshness; resets on each successful CPR decode.
+    // 0 if we have never decoded a position for this aircraft.
+    uint64_t pos_age_ms = (ac->last_position_ms > 0 && now_ms > ac->last_position_ms)
+                        ? now_ms - ac->last_position_ms : 0;
 
     char hdr[512];
     snprintf(hdr, sizeof(hdr),
@@ -73,7 +76,7 @@ static std::string aircraft_to_json(const Aircraft* ac, uint64_t now_ms)
         (unsigned)ac->msgs_rx,
         (unsigned long long)ac->first_seen_ms,
         (unsigned long long)ac->last_seen_ms,
-        (unsigned long long)age_ms);
+        (unsigned long long)pos_age_ms);
 
     std::string out = hdr;
 

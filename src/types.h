@@ -35,6 +35,7 @@ struct Aircraft {
     int32_t  vert_rate_fpm;     // vertical rate in feet per minute
     uint64_t first_seen_ms;     // timestamp of first received message
     uint64_t last_seen_ms;      // timestamp of last received message
+    uint64_t last_position_ms;  // timestamp of last successful CPR decode (0 = never)
     uint32_t msgs_rx;           // count of received messages
     bool     position_valid;    // true once CPR decode has succeeded
     LatLon   trail[TRAIL_MAX];  // position history (circular buffer)

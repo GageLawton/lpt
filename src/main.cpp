@@ -177,6 +177,7 @@ static void dsp_thread_fn()
 
                 // Record position in trail buffer whenever a decode succeeded
                 if (decoded) {
+                    ac->last_position_ms = ts;
                     ac->trail[ac->trail_head] = { ac->lat, ac->lon };
                     ac->trail_head = (ac->trail_head + 1) % TRAIL_MAX;
                     if (ac->trail_len < TRAIL_MAX) ac->trail_len++;

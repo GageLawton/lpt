@@ -210,6 +210,7 @@ static void dsp_thread_fn()
                 }
 
                 if (decoded) {
+                    ac->last_position_ms = ts;
                     ac->trail[ac->trail_head] = { ac->lat, ac->lon };
                     ac->trail_head = (ac->trail_head + 1) % TRAIL_MAX;
                     if (ac->trail_len < TRAIL_MAX) ac->trail_len++;
@@ -236,8 +237,9 @@ static void dsp_thread_fn()
                     ac->lat = sp.lat; ac->lon = sp.lon;
                     ac->groundspeed_kt = sp.speed_kt;
                     if (sp.heading_deg >= 0) ac->heading_deg = sp.heading_deg;
-                    ac->altitude_ft    = 0;
-                    ac->position_valid = true;
+                    ac->altitude_ft     = 0;
+                    ac->position_valid  = true;
+                    ac->last_position_ms = ts;
                     ac->trail[ac->trail_head] = { ac->lat, ac->lon };
                     ac->trail_head = (ac->trail_head + 1) % TRAIL_MAX;
                     if (ac->trail_len < TRAIL_MAX) ac->trail_len++;
