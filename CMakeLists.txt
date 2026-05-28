@@ -137,10 +137,9 @@ target_include_directories(test_mag PRIVATE src)
 target_compile_options(test_mag PRIVATE -Wall -Wextra -O2)
 add_test(NAME test_mag COMMAND test_mag)
 
-add_executable(test_server_utils tests/test_server_utils.cpp src/tracker/aircraft_table.cpp)
-target_include_directories(test_server_utils PRIVATE src ${VENDOR_DIR})
+add_executable(test_server_utils tests/test_server_utils.cpp)
+target_include_directories(test_server_utils PRIVATE src)
 target_compile_options(test_server_utils PRIVATE -Wall -Wextra -O2)
-target_link_libraries(test_server_utils PRIVATE pthread)
 add_test(NAME test_server_utils COMMAND test_server_utils)
 
 add_executable(test_server_traversal tests/test_server_traversal.cpp)
