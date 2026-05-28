@@ -53,16 +53,17 @@ static std::string aircraft_to_json(const Aircraft* ac)
     char icao[7];
     snprintf(icao, sizeof(icao), "%06X", ac->icao);
 
-    char buf[512];
-    snprintf(buf, sizeof(buf),
+    std::string cs = json_escape(ac->callsign[0] ? ac->callsign : "");
+
+    char hdr[384];
+    snprintf(hdr, sizeof(hdr),
         "{\"icao\":\"%s\",\"cs\":\"%s\","
         "\"lat\":%.6f,\"lon\":%.6f,"
         "\"alt\":%d,\"spd\":%.1f,\"hdg\":%.1f,"
         "\"vs\":%d,\"msgsRx\":%u,"
         "\"firstSeenMs\":%llu,\"lastSeenMs\":%llu,"
-        "\"trail\":[]}",
-        icao,
-        ac->callsign[0] ? ac->callsign : "",
+        "\"trail\":[",
+        icao, cs.c_str(),
         ac->lat, ac->lon,
         (int)ac->altitude_ft,
         (double)ac->groundspeed_kt,
@@ -71,7 +72,22 @@ static std::string aircraft_to_json(const Aircraft* ac)
         (unsigned)ac->msgs_rx,
         (unsigned long long)ac->first_seen_ms,
         (unsigned long long)ac->last_seen_ms);
-    return buf;
+
+    std::string out = hdr;
+
+    // Serialize trail circular buffer oldest-to-newest.
+    // trail_head is the next-write slot; oldest entry is at
+    // (trail_head + TRAIL_MAX - trail_len) % TRAIL_MAX.
+    int start = (ac->trail_head + TRAIL_MAX - ac->trail_len) % TRAIL_MAX;
+    for (int i = 0; i < ac->trail_len; i++) {
+        int idx = (start + i) % TRAIL_MAX;
+        char pt[64];
+        snprintf(pt, sizeof(pt), "%s{\"lat\":%.6f,\"lon\":%.6f}",
+                 i > 0 ? "," : "", ac->trail[idx].lat, ac->trail[idx].lon);
+        out += pt;
+    }
+    out += "]}";
+    return out;
 }
 
 void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stats)

@@ -34,6 +34,8 @@ static RingBuffer        g_ring;
 static std::atomic<bool> g_running{true};
 static std::mutex        g_table_mutex;
 static WebStats          g_stats;
+static double            g_center_lat = 37.7749;
+static double            g_center_lon = -122.4194;
 
 static uint64_t now_ms()
 {
@@ -99,13 +101,16 @@ static void dsp_thread_fn()
                                  | ((uint32_t)me[5] << 8)
                                  |  me[6];
 
-                double ref_lat = ac->position_valid ? ac->lat : 37.7749;
-                double ref_lon = ac->position_valid ? ac->lon : -122.4194;
+                double ref_lat = ac->position_valid ? ac->lat : g_center_lat;
+                double ref_lon = ac->position_valid ? ac->lon : g_center_lon;
                 double lat, lon;
                 if (cpr_decode_local(lat_cpr, lon_cpr, odd, ref_lat, ref_lon, &lat, &lon)) {
                     ac->lat = lat;
                     ac->lon = lon;
                     ac->position_valid = true;
+                    ac->trail[ac->trail_head] = { ac->lat, ac->lon };
+                    ac->trail_head = (ac->trail_head + 1) % TRAIL_MAX;
+                    if (ac->trail_len < TRAIL_MAX) ac->trail_len++;
                 }
 
                 uint16_t alt_raw = ((uint16_t)(me[1] & 0xFF) << 4) | (me[2] >> 4);
@@ -174,6 +179,9 @@ int main(int argc, char* argv[])
             else if (arg == "--replay") { replay_path        = argv[++i];            continue; }
         }
     }
+
+    g_center_lat = cfg.center_lat;
+    g_center_lon = cfg.center_lon;
 
     printf("lpt-web — ADS-B Browser Tracker\n");
     printf("Receiver : %.4f, %.4f (%s)\n",
