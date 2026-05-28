@@ -9,6 +9,7 @@
 #include <vector>
 #include <chrono>
 #include <climits>
+#include <cmath>
 #include <string>
 #include <unordered_map>
 
@@ -197,7 +198,7 @@ static void dsp_thread_fn()
                 int32_t vr;
                 if (velocity_decode(me, &spd, &hdg, &vr)) {
                     ac->groundspeed_kt = spd;
-                    ac->heading_deg    = hdg;
+                    if (!std::isnan(hdg)) ac->heading_deg = hdg;
                     ac->vert_rate_fpm  = vr;
                 }
             } else if (tc >= 1 && tc <= 4) {

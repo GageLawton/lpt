@@ -47,7 +47,8 @@ bool velocity_decode(const uint8_t* payload, float* speed_kt,
         int hdg_raw  = ((payload[1] & 0x03) << 8) | payload[2];
         *heading_deg = hdg_raw * 360.0f / 1024.0f;
     } else {
-        *heading_deg = 0.0f;
+        // Heading not available — signal sentinel so caller leaves ac->heading_deg alone.
+        *heading_deg = NAN;
     }
 
     // as_type: 0 = IAS, 1 = TAS — both reported in kt via the same out-param

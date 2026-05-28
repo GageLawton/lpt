@@ -8,6 +8,7 @@
 #include <vector>
 #include <chrono>
 #include <climits>
+#include <cmath>
 #include <string>
 #include <csignal>
 #include <unordered_map>
@@ -48,13 +49,17 @@ static uint64_t now_ms()
 }
 
 // Decode 13-bit Mode A identity field → 4-digit squawk (e.g. 7700).
-// Bit layout (MSB first): C1 A1 C2 A2 C4 A4 B1 X B2 D2 B4 D4 SPI
+// Bit layout (MSB first, ID[12..0]): C1 A1 C2 A2 C4 A4 X B1 D1 B2 D2 B4 D4
+// A digits: A4=bit7, A2=bit9, A1=bit11
+// B digits: B4=bit1, B2=bit3, B1=bit5
+// C digits: C4=bit8, C2=bit10, C1=bit12
+// D digits: D4=bit0, D2=bit2, D1=bit4
 static uint16_t decode_mode_a(uint16_t id)
 {
     uint8_t A = (((id >> 7) & 1) << 2) | (((id >> 9) & 1) << 1) | ((id >> 11) & 1);
-    uint8_t B = (((id >> 2) & 1) << 2) | (((id >> 4) & 1) << 1) | ((id >>  6) & 1);
+    uint8_t B = (((id >> 1) & 1) << 2) | (((id >> 3) & 1) << 1) | ((id >>  5) & 1);
     uint8_t C = (((id >> 8) & 1) << 2) | (((id >>10) & 1) << 1) | ((id >> 12) & 1);
-    uint8_t D = (((id >> 1) & 1) << 2) | (((id >> 3) & 1) << 1);
+    uint8_t D = (((id >> 0) & 1) << 2) | (((id >> 2) & 1) << 1) | ((id >>  4) & 1);
     return (uint16_t)(A * 1000 + B * 100 + C * 10 + D);
 }
 
@@ -133,10 +138,15 @@ static void dsp_thread_fn()
                     uint16_t id  = ((uint16_t)(raw_bytes[2] & 0x1F) << 8) | raw_bytes[3];
                     uint16_t sqk = decode_mode_a(id);
                     if (sqk != 0) {
+                        // Only update existing tracks — DF5/DF21 use AP parity,
+                        // so any recovered ICAO that isn't already known is just noise.
                         std::lock_guard<std::mutex> lk(g_table_mutex);
-                        Aircraft* ac = table_upsert(icao, now_ms());
-                        ac->squawk = sqk;
-                        msgs_this_sec++;
+                        if (Aircraft* ac = table_lookup(icao)) {
+                            ac->squawk        = sqk;
+                            ac->last_seen_ms  = now_ms();
+                            ac->msgs_rx++;
+                            msgs_this_sec++;
+                        }
                     }
                 }
                 pos += (uint32_t)frame_len * 8 * 2;
@@ -237,7 +247,6 @@ static void dsp_thread_fn()
                     ac->lat = sp.lat; ac->lon = sp.lon;
                     ac->groundspeed_kt = sp.speed_kt;
                     if (sp.heading_deg >= 0) ac->heading_deg = sp.heading_deg;
-                    ac->altitude_ft     = 0;
                     ac->position_valid  = true;
                     ac->last_position_ms = ts;
                     ac->trail[ac->trail_head] = { ac->lat, ac->lon };
@@ -250,7 +259,7 @@ static void dsp_thread_fn()
                 float spd, hdg; int32_t vr;
                 if (velocity_decode(me, &spd, &hdg, &vr)) {
                     ac->groundspeed_kt = spd;
-                    ac->heading_deg    = hdg;
+                    if (!std::isnan(hdg)) ac->heading_deg = hdg;
                     ac->vert_rate_fpm  = vr;
                 }
 

@@ -19,6 +19,12 @@ Aircraft* table_upsert(uint32_t icao, uint64_t now_ms)
     return &ac;
 }
 
+Aircraft* table_lookup(uint32_t icao)
+{
+    auto it = s_table.find(icao);
+    return it == s_table.end() ? nullptr : &it->second;
+}
+
 void table_expire(uint64_t now_ms, uint64_t timeout_ms)
 {
     for (auto it = s_table.begin(); it != s_table.end(); ) {

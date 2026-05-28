@@ -91,12 +91,15 @@ bool cpr_decode_local(uint32_t lat_cpr, uint32_t lon_cpr, int odd,
     if (lat >= 270.0) lat -= 360.0;
     if (lon >= 180.0) lon -= 360.0;
 
-    // Plausibility: reject if decoded position is >3° (~180 NM) from reference
+    // Plausibility: reject if decoded position is >5° (~300 NM) from reference.
+    // 5° accommodates the practical ADS-B line-of-sight range (~250 NM) plus
+    // some margin so distant first-sightings still lock when the global pair
+    // (even+odd within 10 s) isn't yet available.
     double dlat = lat - ref_lat;
     double dlon = lon - ref_lon;
     if (dlon >  180.0) dlon -= 360.0;
     if (dlon < -180.0) dlon += 360.0;
-    if (dlat > 3.0 || dlat < -3.0 || dlon > 3.0 || dlon < -3.0) return false;
+    if (dlat > 5.0 || dlat < -5.0 || dlon > 5.0 || dlon < -5.0) return false;
 
     *lat_out = lat;
     *lon_out = lon;

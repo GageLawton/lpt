@@ -40,10 +40,24 @@ static std::string json_escape(const std::string& s)
 {
     std::string out;
     out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"')       out += "\\\"";
-        else if (c == '\\') out += "\\\\";
-        else                out += c;
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b";  break;
+            case '\f': out += "\\f";  break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (c < 0x20) {
+                    char esc[8];
+                    snprintf(esc, sizeof(esc), "\\u%04x", c);
+                    out += esc;
+                } else {
+                    out += (char)c;
+                }
+        }
     }
     return out;
 }
@@ -62,13 +76,13 @@ static std::string aircraft_to_json(const Aircraft* ac, uint64_t now_ms)
     char hdr[512];
     snprintf(hdr, sizeof(hdr),
         "{\"icao\":\"%s\",\"cs\":\"%s\","
-        "\"lat\":%.6f,\"lon\":%.6f,"
+        "\"lat\":%.6f,\"lon\":%.6f,\"posValid\":%s,"
         "\"alt\":%d,\"spd\":%.1f,\"hdg\":%.1f,"
         "\"vs\":%d,\"msgsRx\":%u,"
         "\"firstSeenMs\":%llu,\"lastSeenMs\":%llu,"
         "\"posAgeMs\":%llu,",
         icao, cs.c_str(),
-        ac->lat, ac->lon,
+        ac->lat, ac->lon, ac->position_valid ? "true" : "false",
         (int)ac->altitude_ft,
         (double)ac->groundspeed_kt,
         (double)ac->heading_deg,
@@ -138,7 +152,14 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
                 {
                     std::lock_guard<std::mutex> lk(table_mutex);
                     table_for_each([](const Aircraft* ac, void* ctx) {
-                        if (!ac->position_valid) return;
+                        // Emit aircraft with a position OR with notable metadata
+                        // (squawk, emergency, callsign) — TC28/DF5/DF21 frames can
+                        // populate those fields before a position lock is acquired.
+                        bool interesting = ac->position_valid
+                                        || ac->squawk != 0
+                                        || ac->emergency_state != 0
+                                        || ac->callsign[0] != 0;
+                        if (!interesting) return;
                         auto* c = static_cast<AcCtx*>(ctx);
                         if (!c->out->empty() && c->out->back() != '[') *c->out += ",";
                         *c->out += aircraft_to_json(ac, c->now_ms);
