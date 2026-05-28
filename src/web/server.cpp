@@ -1,4 +1,5 @@
 #include "server.h"
+#include "server_utils.h"
 #include "../tracker/aircraft_table.h"
 #include "httplib.h"
 #include <cstdio>
@@ -8,19 +9,6 @@
 #include <chrono>
 
 static httplib::Server* g_svr = nullptr;
-
-static std::string mime_for(const std::string& path)
-{
-    auto ends = [&](const char* s) {
-        size_t pl = path.size(), sl = strlen(s);
-        return pl >= sl && path.compare(pl - sl, sl, s) == 0;
-    };
-    if (ends(".html")) return "text/html";
-    if (ends(".css"))  return "text/css";
-    if (ends(".js"))   return "application/javascript";
-    if (ends(".jsx"))  return "application/javascript";
-    return "application/octet-stream";
-}
 
 static std::string read_file(const std::string& path)
 {
@@ -33,44 +21,6 @@ static std::string read_file(const std::string& path)
     std::string buf((size_t)sz, '\0');
     if (fread(&buf[0], 1, (size_t)sz, f) != (size_t)sz) buf.clear();
     fclose(f);
-    return buf;
-}
-
-static std::string json_escape(const std::string& s)
-{
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"')       out += "\\\"";
-        else if (c == '\\') out += "\\\\";
-        else                out += c;
-    }
-    return out;
-}
-
-static std::string aircraft_to_json(const Aircraft* ac)
-{
-    char icao[7];
-    snprintf(icao, sizeof(icao), "%06X", ac->icao);
-
-    char buf[512];
-    snprintf(buf, sizeof(buf),
-        "{\"icao\":\"%s\",\"cs\":\"%s\","
-        "\"lat\":%.6f,\"lon\":%.6f,"
-        "\"alt\":%d,\"spd\":%.1f,\"hdg\":%.1f,"
-        "\"vs\":%d,\"msgsRx\":%u,"
-        "\"firstSeenMs\":%llu,\"lastSeenMs\":%llu,"
-        "\"trail\":[]}",
-        icao,
-        ac->callsign[0] ? ac->callsign : "",
-        ac->lat, ac->lon,
-        (int)ac->altitude_ft,
-        (double)ac->groundspeed_kt,
-        (double)ac->heading_deg,
-        (int)ac->vert_rate_fpm,
-        (unsigned)ac->msgs_rx,
-        (unsigned long long)ac->first_seen_ms,
-        (unsigned long long)ac->last_seen_ms);
     return buf;
 }
 
