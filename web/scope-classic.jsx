@@ -216,14 +216,14 @@ function ScopeClassic({ w = 1280, h = 800 }) {
 
         {/* SIDEBAR */}
         <ScopeClassicSidebar w={SIDE_W} h={h - HEADER_H} sim={sim} pal={pal}
-          selected={selected} onSelect={setSelectedIcao} project={project} maxNm={maxNm}
+          selected={selected} onSelect={setSelectedIcao} project={project}
           cx={cx} cy={cy} nmPerPx={nmPerPx} />
       </div>
     </div>
   );
 }
 
-function ScopeClassicSidebar({ w, h, sim, pal, selected, onSelect, project, maxNm, cx, cy, nmPerPx }) {
+function ScopeClassicSidebar({ w, h, sim, pal, selected, onSelect, project, cx, cy, nmPerPx }) {
   const sorted = [...sim.planes].sort((a, b) => {
     const sa = project(a.lat, a.lon), sb = project(b.lat, b.lon);
     const da = Math.hypot(sa.x - cx, sa.y - cy), db = Math.hypot(sb.x - cx, sb.y - cy);
