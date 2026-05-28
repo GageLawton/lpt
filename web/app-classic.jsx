@@ -1,13 +1,12 @@
 /* app-classic.jsx — full-bleed standalone ScopeClassic with extended Tweaks. */
 
-const PALETTES = {
-  phosphor: { name: 'PHOSPHOR', fg: '#33ff77', dim: '#1f8a46', faint: '#0a3318', glow: 'rgba(51,255,119,0.45)', bg: '#020a05', warn: '#ffb84d', sel: '#e6fff0' },
-  amber:    { name: 'AMBER',    fg: '#ffb240', dim: '#a06a18', faint: '#3a2607', glow: 'rgba(255,178,64,0.5)',  bg: '#0a0602', warn: '#ff5a3b', sel: '#fff1d6' },
-  cyan:     { name: 'CYAN',     fg: '#39d8ff', dim: '#1a7693', faint: '#072a35', glow: 'rgba(57,216,255,0.45)', bg: '#02080b', warn: '#ff7a4d', sel: '#e0f7ff' },
-  ice:      { name: 'ICE',      fg: '#e2e9ef', dim: '#65737f', faint: '#1a2128', glow: 'rgba(226,233,239,0.35)',bg: '#05080b', warn: '#ff8a4d', sel: '#ffffff' },
+const PALETTES = window.LPT_PALETTES;
+const PALETTE_HEX = {
+  [PALETTES.phosphor.fg]: 'phosphor',
+  [PALETTES.amber.fg]: 'amber',
+  [PALETTES.white.fg]: 'white',
 };
-const PALETTE_HEX = { '#33ff77': 'phosphor', '#ffb240': 'amber', '#39d8ff': 'cyan', '#e2e9ef': 'ice' };
-const HEX_FOR = (key) => Object.entries(PALETTE_HEX).find(([h, k]) => k === key)?.[0] || '#33ff77';
+const HEX_FOR = (key) => PALETTES[key]?.fg || PALETTES.phosphor.fg;
 
 function applyPalette(key) {
   const p = PALETTES[key] || PALETTES.phosphor;
@@ -74,11 +73,11 @@ function App() {
       </Stage>
 
       <TweaksPanel title="Tweaks">
-        <TweakSection label="Phosphor">
+        <TweakSection label="Palette">
           <TweakColor
             label="Palette"
             value={HEX_FOR(t.palette)}
-            options={['#33ff77', '#ffb240', '#39d8ff', '#e2e9ef']}
+            options={['#39ff14', '#ffb300', '#e8e8e8']}
             onChange={(c) => t.setTweak('palette', PALETTE_HEX[c] || 'phosphor')}
           />
           <TweakSlider label="Glow"     value={t.glow}     min={0} max={2}  step={0.05}
