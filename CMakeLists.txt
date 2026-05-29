@@ -109,6 +109,11 @@ foreach(test test_crc test_cpr test_demod)
     add_test(NAME ${test} COMMAND ${test})
 endforeach()
 
+add_executable(test_cpr_cache tests/test_cpr_cache.cpp src/decoder/cpr.cpp)
+target_include_directories(test_cpr_cache PRIVATE src)
+target_compile_options(test_cpr_cache PRIVATE -Wall -Wextra -O2)
+add_test(NAME test_cpr_cache COMMAND test_cpr_cache)
+
 add_executable(test_altitude tests/test_altitude.cpp src/decoder/altitude.cpp)
 target_include_directories(test_altitude PRIVATE src)
 target_compile_options(test_altitude PRIVATE -Wall -Wextra -O2)

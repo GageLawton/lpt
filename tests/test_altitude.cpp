@@ -29,6 +29,26 @@ int main()
     // grayB=1, grayD=3 → gray_to_bin(7)=5; D100==5 → INT32_MIN
     assert(altitude_decode_gillham(7) == INT32_MIN);
 
+    // M-bit set (bit 6 of the 13-bit raw) without Q — Gray-code path collapses
+    // to all-zero D500/D100 and the D100==0 check returns INT32_MIN.
+    assert(altitude_decode_gillham(0x40) == INT32_MIN);
+
+    // High Q-bit altitude (30,000 ft). The decoder masks bit 4 (Q) then shifts
+    // right by 1, so the n value lives in bits[12:5] (>>1) | bits[3:1] (>>1).
+    // Packing n=1248 into that layout: raw = ((n & ~0xF) << 1) | 0x10 | (n & 0xF).
+    {
+        const int n      = 1248; // (30000 + 1200) / 25
+        uint16_t  raw30k = (uint16_t)(((n & ~0xF) << 1) | 0x10 | (n & 0xF));
+        assert(altitude_decode_gillham(raw30k) == 30000);
+    }
+
+    // All-ones (0x1FFF, 13-bit max) — must not crash or invoke UB.
+    // Value may be INT32_MIN or a numeric result depending on implementation.
+    {
+        int32_t result = altitude_decode_gillham(0x1FFF);
+        (void)result;
+    }
+
     printf("test_altitude: all tests passed\n");
     return 0;
 }

@@ -157,6 +157,7 @@ cmake --build build --target lpt-web
       "cs": "UAL123",
       "lat": 37.6213,
       "lon": -122.3790,
+      "posValid": true,
       "alt": 8500,
       "spd": 210.5,
       "hdg": 275.0,
@@ -164,9 +165,20 @@ cmake --build build --target lpt-web
       "msgsRx": 17,
       "firstSeenMs": 1700000100000,
       "lastSeenMs": 1700000347000,
+      "posAgeMs": 850,
       "trail": [
         { "lat": 37.6200, "lon": -122.3750 }
       ]
+    }
+  ],
+  "partialPlanes": [
+    {
+      "icao": "D4E5F6",
+      "cs": "DLH456",
+      "posValid": false,
+      "sqk": "2200",
+      "msgsRx": 3,
+      "trail": []
     }
   ]
 }
@@ -178,11 +190,16 @@ cmake --build build --target lpt-web
 | `stats.msgsLastSec` | int | Mode S frames decoded in the last second |
 | `stats.crcFailLastSec` | int | Frames that failed CRC in the last second |
 | `stats.uptimeSec` | float | Seconds since `lpt-web` started |
+| `stats.bufOverflows` | int | Ring-buffer overflows since startup |
+| `stats.bufFillPct` | int | Ring-buffer fill level, 0–100 |
 | `planes[].alt` | int | Altitude in feet (Gillham-decoded) |
 | `planes[].spd` | float | Ground speed in knots |
 | `planes[].hdg` | float | Heading in degrees (0–360, true north) |
 | `planes[].vs` | int | Vertical speed in feet/minute (positive = climbing) |
+| `planes[].posAgeMs` | int | Milliseconds since last successful position decode |
 | `planes[].trail` | array | Recent position fixes, oldest first |
+| `partialPlanes` | array | Aircraft heard via callsign/squawk/emergency only — no position fix yet |
+| `planes[].cat`, `sqk`, `emrg` | optional | Emitter category, Mode A squawk, emergency state (omitted when zero) |
 
 ---
 
@@ -202,7 +219,7 @@ The SDL2 build renders a live map directly on the desktop.
 
 ## Screenshots
 
-Add a screenshot of the CRT scope running with live data.
+![CRT phosphor scope](docs/screenshot.png)
 
 ## License
 

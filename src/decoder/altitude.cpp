@@ -17,15 +17,15 @@ int32_t altitude_decode_gillham(uint16_t raw)
     int C1 = (raw >> 12) & 1;
     int A1 = (raw >> 11) & 1;
     int C2 = (raw >> 10) & 1;
-    int A2 = (raw >>  9) & 1;
-    int C4 = (raw >>  8) & 1;
-    int A4 = (raw >>  7) & 1;
-    int B1 = (raw >>  5) & 1;
-    int Q  = (raw >>  4) & 1;
-    int B2 = (raw >>  3) & 1;
-    int D2 = (raw >>  2) & 1;
-    int B4 = (raw >>  1) & 1;
-    int D4 = (raw >>  0) & 1;
+    int A2 = (raw >> 9) & 1;
+    int C4 = (raw >> 8) & 1;
+    int A4 = (raw >> 7) & 1;
+    int B1 = (raw >> 5) & 1;
+    int Q  = (raw >> 4) & 1;
+    int B2 = (raw >> 3) & 1;
+    int D2 = (raw >> 2) & 1;
+    int B4 = (raw >> 1) & 1;
+    int D4 = (raw >> 0) & 1;
 
     if (Q) {
         // 25 ft encoding: remaining 11 bits as binary offset from -1200

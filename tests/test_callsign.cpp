@@ -7,7 +7,7 @@ int main()
 {
     // Hand-crafted ME payload encoding callsign "KLM1023"
     uint8_t me[7] = {0x08, 0x2C, 0xC3, 0x71, 0xC3, 0x2C, 0xE0};
-    char cs[9];
+    char    cs[9];
     assert(callsign_decode(me, cs));
     assert(strcmp(cs, "KLM1023") == 0);
 

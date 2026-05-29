@@ -23,7 +23,7 @@ int main()
 
     // ── Push / pop round-trip ──────────────────────────────────────────────
     {
-        uint8_t src[8] = {1,2,3,4,5,6,7,8};
+        uint8_t src[8] = {1, 2, 3, 4, 5, 6, 7, 8};
         uint8_t dst[8] = {};
         assert(rb_push(&rb, src, 8));
         assert(rb_available(&rb) == 8);
@@ -35,7 +35,7 @@ int main()
 
     // ── Pop from empty buffer returns 0 ───────────────────────────────────
     {
-        uint8_t dst[4];
+        uint8_t  dst[4];
         uint32_t got = rb_pop(&rb, dst, 4);
         assert(got == 0);
         assert(rb_available(&rb) == 0);
@@ -76,13 +76,11 @@ int main()
             assert(rb_push(&rb, chunk, sizeof(chunk)));
             remaining -= sizeof(chunk);
         }
-        if (remaining > 0) {
-            assert(rb_push(&rb, chunk, remaining));
-        }
+        if (remaining > 0) { assert(rb_push(&rb, chunk, remaining)); }
         assert(rb_available(&rb) == FILL);
         // Now push 2 bytes; this must exceed free space (1 byte free) and fail
-        uint8_t two[2] = {0xFF, 0xFF};
-        bool overflow = !rb_push(&rb, two, 2);
+        uint8_t two[2]   = {0xFF, 0xFF};
+        bool    overflow = !rb_push(&rb, two, 2);
         assert(overflow);
     }
 
@@ -92,7 +90,7 @@ int main()
         uint8_t src[16];
         memset(src, 7, 16);
         assert(rb_push(&rb, src, 16));
-        uint8_t dst[6];
+        uint8_t  dst[6];
         uint32_t got = rb_pop(&rb, dst, 6);
         assert(got == 6);
         assert(rb_available(&rb) == 10);

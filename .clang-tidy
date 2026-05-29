@@ -1,0 +1,15 @@
+---
+Checks: >
+  clang-diagnostic-*,
+  -clang-diagnostic-unused-parameter,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  performance-*,
+  readability-redundant-control-flow,
+  readability-redundant-declaration,
+  readability-redundant-string-init,
+  readability-non-const-parameter
+WarningsAsErrors: ''
+HeaderFilterRegex: 'src/.*'
+FormatStyle: file

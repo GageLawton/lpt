@@ -1,19 +1,54 @@
 /* live.jsx — SSE client; exposes the same window.LPTSim API as sim.jsx */
 
 const LPTSim = (() => {
-  let planes = [], stats = {}, selectedIcao = null;
+  let planes = [], partialPlanes = [], stats = {}, selectedIcao = null;
   let RECEIVER = { lat: 0, lon: 0, label: "HOME" };
   const subs = new Set();
+  const prevMsgsRx = new Map();        // icao → last msgsRx seen
+  const FLASH_KEEP_MS = 1000;          // keep freshMs around so scope can fade
+  const RATE_HISTORY = 80;             // sparkline width in samples
+  const msgRateHistory = [];           // rolling msgsLastSec history
 
   function notify() { subs.forEach(fn => fn()); }
+
+  // Tag aircraft with freshMs when their msgsRx counter advances, so the scope
+  // can briefly brighten the blip on each new ping. Old freshMs values older
+  // than FLASH_KEEP_MS are stripped to keep the object small.
+  function applyFreshness(arr, now) {
+    return arr.map(p => {
+      const prev = prevMsgsRx.get(p.icao);
+      const advanced = prev != null && p.msgsRx > prev;
+      const isNew = prev == null;
+      prevMsgsRx.set(p.icao, p.msgsRx ?? 0);
+      const freshMs = (advanced || isNew) ? now : (p._freshMs ?? 0);
+      const keep = freshMs > 0 && (now - freshMs) < FLASH_KEEP_MS ? freshMs : 0;
+      return { ...p, freshMs: keep, selected: p.icao === selectedIcao };
+    });
+  }
 
   function connect() {
     const es = new EventSource("/events");
     es.onmessage = (e) => {
       const d = JSON.parse(e.data);
+      const now = Date.now();
       RECEIVER = d.receiver;
-      stats = { ...d.stats, crcFailLastSec: d.stats.crcFailLastSec ?? 0, peakSignalDb: -30 };
-      planes = d.planes.map(p => ({ ...p, selected: p.icao === selectedIcao }));
+
+      msgRateHistory.push(d.stats.msgsLastSec ?? 0);
+      if (msgRateHistory.length > RATE_HISTORY) msgRateHistory.shift();
+
+      stats = {
+        ...d.stats,
+        crcFailLastSec: d.stats.crcFailLastSec ?? 0,
+        msgRateHistory: msgRateHistory.slice(),
+      };
+      planes        = applyFreshness(d.planes ?? [], now);
+      partialPlanes = applyFreshness(d.partialPlanes ?? [], now);
+
+      // ICAOs no longer present: drop their freshness state so the map doesn't grow.
+      const live = new Set([...planes, ...partialPlanes].map(p => p.icao));
+      for (const icao of prevMsgsRx.keys()) {
+        if (!live.has(icao)) prevMsgsRx.delete(icao);
+      }
       notify();
     };
     es.onerror = () => { es.close(); setTimeout(connect, 3000); };
@@ -21,9 +56,10 @@ const LPTSim = (() => {
   connect();
 
   return {
-    get planes()    { return planes;   },
-    get stats()     { return stats;    },
-    get RECEIVER()  { return RECEIVER; },
+    get planes()         { return planes;        },
+    get partialPlanes()  { return partialPlanes; },
+    get stats()          { return stats;         },
+    get RECEIVER()       { return RECEIVER;      },
     subscribe(fn)       { subs.add(fn); return () => subs.delete(fn); },
     setSelected(icao)   { selectedIcao = icao; if (icao) fetch(`/select/${icao}`, { method: "POST" }); notify(); },
     getSelected()       { return planes.find(p => p.icao === selectedIcao) ?? null; },

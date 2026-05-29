@@ -6,7 +6,7 @@
 SDL_Renderer* map_renderer();
 
 // Returns 0 on success
-int  map_init(int width, int height, double center_lat, double center_lon);
+int map_init(int width, int height, double center_lat, double center_lon);
 
 // Convert lat/lon to screen pixel coordinates
 void map_project(double lat, double lon, int* x, int* y);
