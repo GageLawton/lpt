@@ -182,6 +182,43 @@ function CoastLayer({ d, color, opacity = 0.4, width = 1 }) {
   return <path d={d} fill="none" stroke={color} strokeOpacity={opacity} strokeWidth={width} />;
 }
 
+// Palette definitions ───────────────────────────────────────────────────────
+
+const LPT_PALETTES = {
+  phosphor: {
+    name: 'PHOSPHOR',
+    fg: '#39ff14',
+    dim: '#1c7f35',
+    faint: '#082716',
+    glow: 'rgba(57,255,20,0.45)',
+    bg: '#040b06',
+    warn: '#ffb84d',
+    sel: '#e6fff0',
+  },
+  amber: {
+    name: 'AMBER',
+    fg: '#ffb300',
+    dim: '#8a5d09',
+    faint: '#2f1e00',
+    glow: 'rgba(255,179,0,0.45)',
+    bg: '#0a0600',
+    warn: '#ff5a3b',
+    sel: '#fff1d6',
+  },
+  white: {
+    name: 'WHITE',
+    fg: '#e8e8e8',
+    dim: '#6f767d',
+    faint: '#1b1b1b',
+    glow: 'rgba(232,232,232,0.35)',
+    bg: '#050505',
+    warn: '#ff8a4d',
+    sel: '#ffffff',
+  },
+};
+
+Object.assign(window, { LPT_PALETTES });
+
 // Palette hook ──────────────────────────────────────────────────────────────
 
 function usePalette() {
@@ -195,15 +232,16 @@ function usePalette() {
 }
 
 function readPalette() {
+  const fallback = LPT_PALETTES.phosphor;
   const r = getComputedStyle(document.documentElement);
   return {
-    fg:     r.getPropertyValue('--lpt-fg').trim()     || '#33ff77',
-    dim:    r.getPropertyValue('--lpt-dim').trim()    || '#1f8a44',
-    faint:  r.getPropertyValue('--lpt-faint').trim()  || '#0e3d1e',
-    glow:   r.getPropertyValue('--lpt-glow').trim()   || 'rgba(51,255,119,0.5)',
-    bg:     r.getPropertyValue('--lpt-bg').trim()     || '#020805',
-    warn:   r.getPropertyValue('--lpt-warn').trim()   || '#ff6b3b',
-    sel:    r.getPropertyValue('--lpt-sel').trim()    || '#fff',
+    fg:     r.getPropertyValue('--lpt-fg').trim()     || fallback.fg,
+    dim:    r.getPropertyValue('--lpt-dim').trim()    || fallback.dim,
+    faint:  r.getPropertyValue('--lpt-faint').trim()  || fallback.faint,
+    glow:   r.getPropertyValue('--lpt-glow').trim()   || fallback.glow,
+    bg:     r.getPropertyValue('--lpt-bg').trim()     || fallback.bg,
+    warn:   r.getPropertyValue('--lpt-warn').trim()   || fallback.warn,
+    sel:    r.getPropertyValue('--lpt-sel').trim()    || fallback.sel,
   };
 }
 

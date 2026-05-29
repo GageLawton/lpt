@@ -216,16 +216,17 @@ function ScopeClassic({ w = 1280, h = 800 }) {
 
         {/* SIDEBAR */}
         <ScopeClassicSidebar w={SIDE_W} h={h - HEADER_H} sim={sim} pal={pal}
-          selected={selected} onSelect={setSelectedIcao} project={project} maxNm={maxNm} />
+          selected={selected} onSelect={setSelectedIcao} project={project}
+          cx={cx} cy={cy} nmPerPx={nmPerPx} />
       </div>
     </div>
   );
 }
 
-function ScopeClassicSidebar({ w, h, sim, pal, selected, onSelect, project, maxNm }) {
+function ScopeClassicSidebar({ w, h, sim, pal, selected, onSelect, project, cx, cy, nmPerPx }) {
   const sorted = [...sim.planes].sort((a, b) => {
     const sa = project(a.lat, a.lon), sb = project(b.lat, b.lon);
-    const da = Math.hypot(sa.x - 380, sa.y - 380), db = Math.hypot(sb.x - 380, sb.y - 380);
+    const da = Math.hypot(sa.x - cx, sa.y - cy), db = Math.hypot(sb.x - cx, sb.y - cy);
     return da - db;
   });
 
@@ -273,7 +274,7 @@ function ScopeClassicSidebar({ w, h, sim, pal, selected, onSelect, project, maxN
         <div style={{ overflow: 'auto', flex: 1 }}>
           {sorted.map((p) => {
             const s = project(p.lat, p.lon);
-            const rngNm = Math.hypot(s.x - 380, s.y - 380) * (maxNm / 366);
+            const rngNm = Math.hypot(s.x - cx, s.y - cy) * nmPerPx;
             const isSel = selected !== null && p.icao === selected.icao;
             return (
               <div key={p.icao}
