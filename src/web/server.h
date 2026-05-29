@@ -16,6 +16,8 @@ struct WebStats {
     std::atomic<uint64_t> msgs_total{0};
     std::atomic<uint32_t> msgs_last_sec{0};
     std::atomic<uint32_t> crc_fail_last_sec{0};
+    std::atomic<uint32_t> buf_overflows{0};  // ring buffer overflow events
+    std::atomic<uint32_t> buf_fill_pct{0};   // last-sampled ring buffer fill %
     std::atomic<uint64_t> start_ms{0};
 };
 

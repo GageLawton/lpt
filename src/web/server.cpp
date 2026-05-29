@@ -42,37 +42,47 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
         res.set_header("X-Accel-Buffering", "no");
         res.set_chunked_content_provider("text/event-stream",
             [&](size_t, httplib::DataSink& sink) -> bool {
+                using namespace std::chrono;
+                uint64_t now_ms = (uint64_t)duration_cast<milliseconds>(
+                    steady_clock::now().time_since_epoch()).count();
+
+                struct AcCtx { std::string* out; uint64_t now_ms; };
                 std::string planes_json;
+                AcCtx ac_ctx = { &planes_json, now_ms };
                 {
                     std::lock_guard<std::mutex> lk(table_mutex);
                     table_for_each([](const Aircraft* ac, void* ctx) {
-                        if (!ac->position_valid) return;
-                        std::string* out = static_cast<std::string*>(ctx);
-                        if (!out->empty() && out->back() != '[') *out += ",";
-                        *out += aircraft_to_json(ac);
-                    }, &planes_json);
+                        // Emit aircraft with a position OR with notable metadata
+                        // (squawk, emergency, callsign) — TC28/DF5/DF21 frames can
+                        // populate those fields before a position lock is acquired.
+                        bool interesting = ac->position_valid
+                                        || ac->squawk != 0
+                                        || ac->emergency_state != 0
+                                        || ac->callsign[0] != 0;
+                        if (!interesting) return;
+                        auto* c = static_cast<AcCtx*>(ctx);
+                        if (!c->out->empty() && c->out->back() != '[') *c->out += ",";
+                        *c->out += aircraft_to_json(ac, c->now_ms);
+                    }, &ac_ctx);
                 }
 
-                uint64_t uptime_ms = 0;
                 uint64_t t0 = stats.start_ms.load();
-                if (t0 > 0) {
-                    using namespace std::chrono;
-                    uint64_t now = (uint64_t)duration_cast<milliseconds>(
-                        steady_clock::now().time_since_epoch()).count();
-                    uptime_ms = now > t0 ? now - t0 : 0;
-                }
+                uint64_t uptime_ms = (t0 > 0 && now_ms > t0) ? now_ms - t0 : 0;
 
                 std::string label_esc = json_escape(cfg.receiver_label);
                 char hdr[512];
                 snprintf(hdr, sizeof(hdr),
                     "{\"receiver\":{\"lat\":%.6f,\"lon\":%.6f,\"label\":\"%s\"},"
-                    "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"crcFailLastSec\":%u,\"uptimeSec\":%.1f},"
+                    "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"crcFailLastSec\":%u,"
+                    "\"uptimeSec\":%.1f,\"bufOverflows\":%u,\"bufFillPct\":%u},"
                     "\"planes\":[",
                     cfg.center_lat, cfg.center_lon, label_esc.c_str(),
                     (unsigned long long)stats.msgs_total.load(),
                     (unsigned int)stats.msgs_last_sec.load(),
                     (unsigned int)stats.crc_fail_last_sec.load(),
-                    uptime_ms / 1000.0);
+                    uptime_ms / 1000.0,
+                    (unsigned int)stats.buf_overflows.load(),
+                    (unsigned int)stats.buf_fill_pct.load());
 
                 std::string event = "data: ";
                 event += hdr;

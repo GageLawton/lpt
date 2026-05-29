@@ -68,10 +68,13 @@ bool cpr_decode_global(uint32_t lat_even, uint32_t lon_even,
 
 bool cpr_decode_local(uint32_t lat_cpr, uint32_t lon_cpr, int odd,
                       double ref_lat, double ref_lon,
-                      double* lat_out, double* lon_out)
+                      double* lat_out, double* lon_out,
+                      bool surface)
 {
     const double scale = 1.0 / 131072.0;
-    double dLat = odd ? 360.0 / 59.0 : 360.0 / 60.0;
+    // Surface CPR uses 90° zone range; airborne uses 360°
+    const double zone = surface ? 90.0 : 360.0;
+    double dLat = odd ? zone / 59.0 : zone / 60.0;
 
     double rlat = (double)lat_cpr * scale;
     int j = (int)floor(ref_lat / dLat) + (int)floor(mod(ref_lat, dLat) / dLat - rlat + 0.5);
@@ -87,6 +90,16 @@ bool cpr_decode_local(uint32_t lat_cpr, uint32_t lon_cpr, int odd,
 
     if (lat >= 270.0) lat -= 360.0;
     if (lon >= 180.0) lon -= 360.0;
+
+    // Plausibility: reject if decoded position is >5° (~300 NM) from reference.
+    // 5° accommodates the practical ADS-B line-of-sight range (~250 NM) plus
+    // some margin so distant first-sightings still lock when the global pair
+    // (even+odd within 10 s) isn't yet available.
+    double dlat = lat - ref_lat;
+    double dlon = lon - ref_lon;
+    if (dlon >  180.0) dlon -= 360.0;
+    if (dlon < -180.0) dlon += 360.0;
+    if (dlat > 5.0 || dlat < -5.0 || dlon > 5.0 || dlon < -5.0) return false;
 
     *lat_out = lat;
     *lon_out = lon;
