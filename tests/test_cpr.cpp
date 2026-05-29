@@ -33,7 +33,7 @@ int main()
     // Global decode with odd frame received last
     {
         double lat_g, lon_g;
-        bool g = cpr_decode_global(lat_e, lon_e, lat_o, lon_o, 1, &lat_g, &lon_g);
+        bool   g = cpr_decode_global(lat_e, lon_e, lat_o, lon_o, 1, &lat_g, &lon_g);
         assert(g);
         assert(approx(lat_g, 52.2572, 0.05));
     }
@@ -41,7 +41,7 @@ int main()
     // Local decode using odd frame with a nearby reference
     {
         double lat_l, lon_l;
-        bool g = cpr_decode_local(lat_o, lon_o, 1, 52.0, 3.5, &lat_l, &lon_l);
+        bool   g = cpr_decode_local(lat_o, lon_o, 1, 52.0, 3.5, &lat_l, &lon_l);
         assert(g);
         assert(approx(lat_l, 52.2572, 0.1));
     }

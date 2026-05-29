@@ -28,35 +28,29 @@
 // Movement code → approximate ground speed in knots
 static float mov_to_kt(uint8_t mov)
 {
-    if (mov == 0)              return 0.0f;   // no info
-    if (mov == 1)              return 0.0f;   // stopped
-    if (mov <= 8)              return 0.125f * (mov - 1);
-    if (mov <= 12)             return 1.0f  + 0.25f  * (mov -  9);
-    if (mov <= 38)             return 2.0f  + 0.5f   * (mov - 13);
-    if (mov <= 93)             return 15.0f + 1.0f   * (mov - 39);
-    if (mov <= 108)            return 70.0f + 2.0f   * (mov - 94);
-    if (mov <= 123)            return 100.0f + 5.0f  * (mov - 109);
+    if (mov == 0) return 0.0f; // no info
+    if (mov == 1) return 0.0f; // stopped
+    if (mov <= 8) return 0.125f * (mov - 1);
+    if (mov <= 12) return 1.0f + 0.25f * (mov - 9);
+    if (mov <= 38) return 2.0f + 0.5f * (mov - 13);
+    if (mov <= 93) return 15.0f + 1.0f * (mov - 39);
+    if (mov <= 108) return 70.0f + 2.0f * (mov - 94);
+    if (mov <= 123) return 100.0f + 5.0f * (mov - 109);
     return 175.0f;
 }
 
-bool surface_decode(const uint8_t* me, double ref_lat, double ref_lon,
-                    SurfacePos* out)
+bool surface_decode(const uint8_t* me, double ref_lat, double ref_lon, SurfacePos* out)
 {
-    uint8_t mov = ((me[0] & 0x07) << 4) | (me[1] >> 4);
+    uint8_t mov        = ((me[0] & 0x07) << 4) | (me[1] >> 4);
     uint8_t hdg_status = (me[1] >> 3) & 1;
     uint8_t hdg_raw    = ((me[1] & 0x03) << 5) | (me[2] >> 3);
 
     int      odd     = (me[2] >> 2) & 1;
-    uint32_t lat_cpr = ((uint32_t)(me[2] & 0x03) << 15)
-                     | ((uint32_t)me[3] << 7)
-                     |  (me[4] >> 1);
-    uint32_t lon_cpr = ((uint32_t)(me[4] & 0x01) << 16)
-                     | ((uint32_t)me[5] << 8)
-                     |  me[6];
+    uint32_t lat_cpr = ((uint32_t)(me[2] & 0x03) << 15) | ((uint32_t)me[3] << 7) | (me[4] >> 1);
+    uint32_t lon_cpr = ((uint32_t)(me[4] & 0x01) << 16) | ((uint32_t)me[5] << 8) | me[6];
 
     double lat, lon;
-    if (!cpr_decode_local(lat_cpr, lon_cpr, odd, ref_lat, ref_lon,
-                          &lat, &lon, /*surface=*/true))
+    if (!cpr_decode_local(lat_cpr, lon_cpr, odd, ref_lat, ref_lon, &lat, &lon, /*surface=*/true))
         return false;
 
     out->lat         = lat;

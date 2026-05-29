@@ -3,8 +3,8 @@
 // payload[0..6] is the 7-byte ME field of a TC19 (airborne velocity) message
 #include <cmath>
 
-bool velocity_decode(const uint8_t* payload, float* speed_kt,
-                     float* heading_deg, int32_t* vert_rate_fpm)
+bool velocity_decode(const uint8_t* payload, float* speed_kt, float* heading_deg,
+                     int32_t* vert_rate_fpm)
 {
     uint8_t st = payload[0] & 0x07; // subtype
     if (st < 1 || st > 4) return false;
@@ -13,7 +13,10 @@ bool velocity_decode(const uint8_t* payload, float* speed_kt,
     auto decode_vr = [&]() {
         int vr_sign = (payload[4] >> 2) & 1;
         int vr_val  = ((payload[4] & 0x03) << 7) | (payload[5] >> 1);
-        if (vr_val == 0) { *vert_rate_fpm = 0; return; }
+        if (vr_val == 0) {
+            *vert_rate_fpm = 0;
+            return;
+        }
         vr_val--;
         *vert_rate_fpm = (vr_sign ? -1 : 1) * vr_val * 64;
     };
@@ -26,8 +29,12 @@ bool velocity_decode(const uint8_t* payload, float* speed_kt,
         int ns_vel = ((payload[3] & 0x7F) << 3) | (payload[4] >> 5);
 
         if (ew_vel == 0 || ns_vel == 0) return false; // 0 = not available
-        ew_vel--; ns_vel--;
-        if (st == 2) { ew_vel *= 4; ns_vel *= 4; } // supersonic: units are 4 kt
+        ew_vel--;
+        ns_vel--;
+        if (st == 2) {
+            ew_vel *= 4;
+            ns_vel *= 4;
+        } // supersonic: units are 4 kt
         if (ew_dir) ew_vel = -ew_vel;
         if (ns_dir) ns_vel = -ns_vel;
 

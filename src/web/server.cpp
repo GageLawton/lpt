@@ -16,7 +16,10 @@ static std::string read_file(const std::string& path)
     if (!f) return "";
     fseek(f, 0, SEEK_END);
     long sz = ftell(f);
-    if (sz <= 0) { fclose(f); return ""; }
+    if (sz <= 0) {
+        fclose(f);
+        return "";
+    }
     rewind(f);
     std::string buf((size_t)sz, '\0');
     if (fread(&buf[0], 1, (size_t)sz, f) != (size_t)sz) buf.clear();
@@ -32,7 +35,11 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
     // Root — serve index.html
     svr.Get("/", [&](const httplib::Request&, httplib::Response& res) {
         std::string body = read_file(cfg.web_dir + "/index.html");
-        if (body.empty()) { res.status = 404; res.set_content("Not found", "text/plain"); return; }
+        if (body.empty()) {
+            res.status = 404;
+            res.set_content("Not found", "text/plain");
+            return;
+        }
         res.set_content(body, "text/html");
     });
 
@@ -40,53 +47,59 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
     svr.Get("/events", [&](const httplib::Request&, httplib::Response& res) {
         res.set_header("Cache-Control", "no-cache");
         res.set_header("X-Accel-Buffering", "no");
-        res.set_chunked_content_provider("text/event-stream",
-            [&](size_t, httplib::DataSink& sink) -> bool {
+        res.set_chunked_content_provider(
+            "text/event-stream", [&](size_t, httplib::DataSink& sink) -> bool {
                 using namespace std::chrono;
-                uint64_t now_ms = (uint64_t)duration_cast<milliseconds>(
-                    steady_clock::now().time_since_epoch()).count();
+                uint64_t now_ms
+                    = (uint64_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch())
+                          .count();
 
                 // planes      → aircraft with a decoded position fix
                 // partialPlanes → aircraft heard via callsign/squawk/emergency
                 //                 frames only (TC28, DF5/DF21, TC1-4) before
                 //                 the first CPR pair has resolved a position.
-                struct AcCtx { std::string* planes; std::string* partials; uint64_t now_ms; };
+                struct AcCtx {
+                    std::string* planes;
+                    std::string* partials;
+                    uint64_t     now_ms;
+                };
                 std::string planes_json, partials_json;
-                AcCtx ac_ctx = { &planes_json, &partials_json, now_ms };
+                AcCtx       ac_ctx = {&planes_json, &partials_json, now_ms};
                 {
                     std::lock_guard<std::mutex> lk(table_mutex);
-                    table_for_each([](const Aircraft* ac, void* ctx) {
-                        auto* c = static_cast<AcCtx*>(ctx);
-                        std::string* dest = nullptr;
-                        if (ac->position_valid) {
-                            dest = c->planes;
-                        } else if (ac->squawk != 0 || ac->emergency_state != 0
-                                                   || ac->callsign[0] != 0) {
-                            dest = c->partials;
-                        }
-                        if (!dest) return;
-                        if (!dest->empty()) *dest += ",";
-                        *dest += aircraft_to_json(ac, c->now_ms);
-                    }, &ac_ctx);
+                    table_for_each(
+                        [](const Aircraft* ac, void* ctx) {
+                            auto*        c    = static_cast<AcCtx*>(ctx);
+                            std::string* dest = nullptr;
+                            if (ac->position_valid) {
+                                dest = c->planes;
+                            } else if (ac->squawk != 0 || ac->emergency_state != 0
+                                       || ac->callsign[0] != 0) {
+                                dest = c->partials;
+                            }
+                            if (!dest) return;
+                            if (!dest->empty()) *dest += ",";
+                            *dest += aircraft_to_json(ac, c->now_ms);
+                        },
+                        &ac_ctx);
                 }
 
-                uint64_t t0 = stats.start_ms.load();
+                uint64_t t0        = stats.start_ms.load();
                 uint64_t uptime_ms = (t0 > 0 && now_ms > t0) ? now_ms - t0 : 0;
 
                 std::string label_esc = json_escape(cfg.receiver_label);
-                char hdr[512];
+                char        hdr[512];
                 snprintf(hdr, sizeof(hdr),
-                    "{\"receiver\":{\"lat\":%.6f,\"lon\":%.6f,\"label\":\"%s\"},"
-                    "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"crcFailLastSec\":%u,"
-                    "\"uptimeSec\":%.1f,\"bufOverflows\":%u,\"bufFillPct\":%u},"
-                    "\"planes\":[",
-                    cfg.center_lat, cfg.center_lon, label_esc.c_str(),
-                    (unsigned long long)stats.msgs_total.load(),
-                    (unsigned int)stats.msgs_last_sec.load(),
-                    (unsigned int)stats.crc_fail_last_sec.load(),
-                    uptime_ms / 1000.0,
-                    (unsigned int)stats.buf_overflows.load(),
-                    (unsigned int)stats.buf_fill_pct.load());
+                         "{\"receiver\":{\"lat\":%.6f,\"lon\":%.6f,\"label\":\"%s\"},"
+                         "\"stats\":{\"msgsTotal\":%llu,\"msgsLastSec\":%u,\"crcFailLastSec\":%u,"
+                         "\"uptimeSec\":%.1f,\"bufOverflows\":%u,\"bufFillPct\":%u},"
+                         "\"planes\":[",
+                         cfg.center_lat, cfg.center_lon, label_esc.c_str(),
+                         (unsigned long long)stats.msgs_total.load(),
+                         (unsigned int)stats.msgs_last_sec.load(),
+                         (unsigned int)stats.crc_fail_last_sec.load(), uptime_ms / 1000.0,
+                         (unsigned int)stats.buf_overflows.load(),
+                         (unsigned int)stats.buf_fill_pct.load());
 
                 std::string event = "data: ";
                 event += hdr;
@@ -102,20 +115,24 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
     });
 
     // Aircraft selection — client POSTs when user clicks a blip
-    svr.Post(R"(/select/([0-9A-Fa-f]+))",
-        [](const httplib::Request&, httplib::Response& res) {
-            res.set_content("ok", "text/plain");
-        });
+    svr.Post(R"(/select/([0-9A-Fa-f]+))", [](const httplib::Request&, httplib::Response& res) {
+        res.set_content("ok", "text/plain");
+    });
 
     // Static file handler (catch-all, must be last)
     svr.Get(R"(/(.+))", [&](const httplib::Request& req, httplib::Response& res) {
         std::string path = cfg.web_dir + "/" + req.matches[1].str();
         // Prevent path traversal
         if (path.find("..") != std::string::npos) {
-            res.status = 400; return;
+            res.status = 400;
+            return;
         }
         std::string body = read_file(path);
-        if (body.empty()) { res.status = 404; res.set_content("Not found", "text/plain"); return; }
+        if (body.empty()) {
+            res.status = 404;
+            res.set_content("Not found", "text/plain");
+            return;
+        }
         res.set_content(body, mime_for(path));
     });
 

@@ -9,15 +9,14 @@ void aircraft_draw(const Aircraft* ac)
     if (!ac->position_valid) return;
 
     SDL_Renderer* r = map_renderer();
-    int x, y;
+    int           x, y;
     map_project(ac->lat, ac->lon, &x, &y);
 
     // Filled circle radius 4 in #00ff88
     SDL_SetRenderDrawColor(r, 0x00, 0xFF, 0x88, 0xFF);
     for (int dy = -4; dy <= 4; dy++)
         for (int dx = -4; dx <= 4; dx++)
-            if (dx*dx + dy*dy <= 16)
-                SDL_RenderDrawPoint(r, x + dx, y + dy);
+            if (dx * dx + dy * dy <= 16) SDL_RenderDrawPoint(r, x + dx, y + dy);
 
     // Callsign label 6 px to the right — requires TTF font wired up in map_init;
     // see issue #13 for full SDL2_ttf integration
@@ -40,13 +39,13 @@ void aircraft_draw_vector(const Aircraft* ac)
     if (!ac->position_valid || ac->groundspeed_kt <= 0) return;
 
     SDL_Renderer* r = map_renderer();
-    int x, y;
+    int           x, y;
     map_project(ac->lat, ac->lon, &x, &y);
 
     float len = fminf(ac->groundspeed_kt, 60.0f);
     float rad = ac->heading_deg * 3.14159265f / 180.0f;
-    int x2 = x + (int)(len * sinf(rad));
-    int y2 = y - (int)(len * cosf(rad));
+    int   x2  = x + (int)(len * sinf(rad));
+    int   y2  = y - (int)(len * cosf(rad));
 
     SDL_SetRenderDrawColor(r, 0x00, 0xFF, 0x88, 0x99);
     SDL_RenderDrawLine(r, x, y, x2, y2);

@@ -2,7 +2,7 @@
 #include <rtl-sdr.h>
 #include <cstdio>
 
-static rtlsdr_dev_t* s_dev = nullptr;
+static rtlsdr_dev_t*  s_dev = nullptr;
 static SampleCallback s_cb;
 
 static void rtlsdr_callback(unsigned char* buf, uint32_t len, void*)
@@ -29,8 +29,7 @@ int rtlsdr_init(uint32_t freq_hz, uint32_t sample_rate_hz, int gain_tenth_db)
         printf("[rtlsdr] Gain: %.1f dB\n", gain_tenth_db / 10.0);
     }
     rtlsdr_reset_buffer(s_dev);
-    printf("[rtlsdr] Tuned to %.1f MHz @ %.1f MSPS\n",
-           freq_hz / 1e6, sample_rate_hz / 1e6);
+    printf("[rtlsdr] Tuned to %.1f MHz @ %.1f MSPS\n", freq_hz / 1e6, sample_rate_hz / 1e6);
     return 0;
 }
 

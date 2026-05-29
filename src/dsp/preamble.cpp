@@ -9,13 +9,13 @@ int preamble_search(const float* mag, uint32_t len)
     if (len < 16) return -1;
 
     for (uint32_t i = 0; i <= len - 16; i++) {
-        float hi = (mag[i+0] + mag[i+2] + mag[i+7] + mag[i+9]) * 0.25f;
-        float lo = (mag[i+1] + mag[i+3] + mag[i+4] + mag[i+6] + mag[i+8]) * 0.2f;
+        float hi = (mag[i + 0] + mag[i + 2] + mag[i + 7] + mag[i + 9]) * 0.25f;
+        float lo = (mag[i + 1] + mag[i + 3] + mag[i + 4] + mag[i + 6] + mag[i + 8]) * 0.2f;
 
         if (hi <= lo || hi < 2.0f * lo) continue;
 
         float thresh = (hi + lo) * 0.5f;
-        bool ok = true;
+        bool  ok     = true;
         for (int k = 0; k < 4 && ok; k++)
             if (mag[i + PREAMBLE_HI[k]] < thresh) ok = false;
         for (int k = 0; k < 5 && ok; k++)

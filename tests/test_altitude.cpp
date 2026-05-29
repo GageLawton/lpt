@@ -37,8 +37,8 @@ int main()
     // right by 1, so the n value lives in bits[12:5] (>>1) | bits[3:1] (>>1).
     // Packing n=1248 into that layout: raw = ((n & ~0xF) << 1) | 0x10 | (n & 0xF).
     {
-        const int n = 1248;  // (30000 + 1200) / 25
-        uint16_t raw30k = (uint16_t)(((n & ~0xF) << 1) | 0x10 | (n & 0xF));
+        const int n      = 1248; // (30000 + 1200) / 25
+        uint16_t  raw30k = (uint16_t)(((n & ~0xF) << 1) | 0x10 | (n & 0xF));
         assert(altitude_decode_gillham(raw30k) == 30000);
     }
 

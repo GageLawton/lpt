@@ -29,7 +29,7 @@ int main()
     // 1. A known even+odd frame pair decodes globally.
     uint32_t lat_e = 93000, lon_e = 74158;
     uint32_t lat_o = 74158, lon_o = 50194;
-    double lat, lon;
+    double   lat, lon;
     assert(cpr_decode_global(lat_e, lon_e, lat_o, lon_o, 0, &lat, &lon));
 
     // 2. Two frames 9 s apart pass the global-pair window (≤ 10 s).
@@ -44,7 +44,7 @@ int main()
 
     // 5. Cache eviction: entry exactly at the TTL boundary is kept; older is evicted.
     assert(!should_evict(/*now=*/60000, /*newest=*/0));
-    assert( should_evict(/*now=*/60001, /*newest=*/0));
+    assert(should_evict(/*now=*/60001, /*newest=*/0));
 
     printf("test_cpr_cache: all tests passed\n");
     return 0;
