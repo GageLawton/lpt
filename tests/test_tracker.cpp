@@ -34,6 +34,32 @@ int main() {
     table_for_each([](const Aircraft*, void* ctx){ (*(int*)ctx)++; }, &count);
     assert(count == 0);
 
+    // table_for_each on empty table — must not crash; count stays 0
+    {
+        int n = 0;
+        table_for_each([](const Aircraft*, void* ctx){ (*(int*)ctx)++; }, &n);
+        assert(n == 0);
+    }
+
+    // first_seen_ms is set on creation and preserved across subsequent upserts.
+    {
+        Aircraft* x = table_upsert(0xFFFFFF, 5000);
+        assert(x->first_seen_ms == 5000);
+        table_upsert(0xFFFFFF, 6000);
+        assert(x->first_seen_ms == 5000);  // must NOT change
+        assert(x->last_seen_ms  == 6000);  // but last_seen must update
+    }
+
+    // msgs_rx increments on every upsert for the same ICAO.
+    {
+        Aircraft* y = table_upsert(0xEEEEEE, 7000);
+        assert(y->msgs_rx == 1);
+        table_upsert(0xEEEEEE, 7100);
+        assert(y->msgs_rx == 2);
+        table_upsert(0xEEEEEE, 7200);
+        assert(y->msgs_rx == 3);
+    }
+
     printf("test_tracker: all tests passed\n");
     return 0;
 }

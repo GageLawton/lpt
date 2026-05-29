@@ -68,6 +68,37 @@ int main()
         assert(modes_tc(&f) == 1);   // me[0]=0x08 → TC=(0x08>>3)&0x1F=1
     }
 
+    // Test 6: DF18 frame — ICAO is extracted identically to DF17
+    {
+        uint8_t frame[14];
+        make_df17_frame(frame, 0xABCDEF, me);
+        frame[0] = (18 << 3);  // switch DF to 18
+        uint32_t crc = modes_crc(frame, 11);
+        frame[11] = (crc >> 16) & 0xFF;
+        frame[12] = (crc >>  8) & 0xFF;
+        frame[13] =  crc        & 0xFF;
+
+        ModeSFrame f2;
+        assert(modes_parse(frame, 14, &f2));
+        assert(f2.icao == 0xABCDEFu);
+    }
+
+    // Test 7: 14-byte frame with DF != 17/18 — ICAO must not be extracted
+    // from the body bytes. modes_parse may return true (CRC valid) or false;
+    // either way ICAO must be zero.
+    {
+        uint8_t frame[14] = {};
+        frame[0] = (21 << 3); // DF=21 (Comm-B identity reply)
+        uint32_t crc = modes_crc(frame, 11);
+        frame[11] = (crc >> 16) & 0xFF;
+        frame[12] = (crc >>  8) & 0xFF;
+        frame[13] =  crc        & 0xFF;
+
+        ModeSFrame f3;
+        bool ok = modes_parse(frame, 14, &f3);
+        if (ok) assert(f3.icao == 0u);
+    }
+
     printf("test_modes: all tests passed\n");
     return 0;
 }

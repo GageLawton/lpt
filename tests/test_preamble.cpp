@@ -49,6 +49,23 @@ int main()
         assert(preamble_search(buf, 16) == -1);
     }
 
+    // Test 6: two valid preambles — earliest is returned
+    {
+        float buf[64] = {};
+        for (int i = 0; i < 64; i++) buf[i] = 0.1f;
+        make_preamble(buf, 0);
+        make_preamble(buf, 20);
+        assert(preamble_search(buf, 64) == 0);
+    }
+
+    // Test 7: preamble at the last valid start position (len − 16)
+    {
+        float buf[64] = {};
+        for (int i = 0; i < 64; i++) buf[i] = 0.1f;
+        make_preamble(buf, 48); // 64 - 16 = 48
+        assert(preamble_search(buf, 64) == 48);
+    }
+
     printf("test_preamble: all tests passed\n");
     return 0;
 }
