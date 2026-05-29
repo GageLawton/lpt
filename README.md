@@ -219,7 +219,7 @@ The SDL2 build renders a live map directly on the desktop.
 
 ## Screenshots
 
-Add a screenshot of the CRT scope running with live data.
+![CRT phosphor scope](docs/screenshot.png)
 
 ## License
 
