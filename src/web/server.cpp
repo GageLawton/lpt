@@ -46,23 +46,27 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
                 uint64_t now_ms = (uint64_t)duration_cast<milliseconds>(
                     steady_clock::now().time_since_epoch()).count();
 
-                struct AcCtx { std::string* out; uint64_t now_ms; };
-                std::string planes_json;
-                AcCtx ac_ctx = { &planes_json, now_ms };
+                // planes      → aircraft with a decoded position fix
+                // partialPlanes → aircraft heard via callsign/squawk/emergency
+                //                 frames only (TC28, DF5/DF21, TC1-4) before
+                //                 the first CPR pair has resolved a position.
+                struct AcCtx { std::string* planes; std::string* partials; uint64_t now_ms; };
+                std::string planes_json, partials_json;
+                AcCtx ac_ctx = { &planes_json, &partials_json, now_ms };
                 {
                     std::lock_guard<std::mutex> lk(table_mutex);
                     table_for_each([](const Aircraft* ac, void* ctx) {
-                        // Emit aircraft with a position OR with notable metadata
-                        // (squawk, emergency, callsign) — TC28/DF5/DF21 frames can
-                        // populate those fields before a position lock is acquired.
-                        bool interesting = ac->position_valid
-                                        || ac->squawk != 0
-                                        || ac->emergency_state != 0
-                                        || ac->callsign[0] != 0;
-                        if (!interesting) return;
                         auto* c = static_cast<AcCtx*>(ctx);
-                        if (!c->out->empty() && c->out->back() != '[') *c->out += ",";
-                        *c->out += aircraft_to_json(ac, c->now_ms);
+                        std::string* dest = nullptr;
+                        if (ac->position_valid) {
+                            dest = c->planes;
+                        } else if (ac->squawk != 0 || ac->emergency_state != 0
+                                                   || ac->callsign[0] != 0) {
+                            dest = c->partials;
+                        }
+                        if (!dest) return;
+                        if (!dest->empty()) *dest += ",";
+                        *dest += aircraft_to_json(ac, c->now_ms);
                     }, &ac_ctx);
                 }
 
@@ -87,6 +91,8 @@ void server_run(const ServerConfig& cfg, std::mutex& table_mutex, WebStats& stat
                 std::string event = "data: ";
                 event += hdr;
                 event += planes_json;
+                event += "],\"partialPlanes\":[";
+                event += partials_json;
                 event += "]}\n\n";
 
                 if (!sink.write(event.c_str(), event.size())) return false;
