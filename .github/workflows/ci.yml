@@ -7,6 +7,17 @@ on:
     branches: [main]
 
 jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get install -y clang-format
+      - name: Check formatting
+        run: |
+          mapfile -t files < <(find src tests -name '*.cpp' -o -name '*.h')
+          clang-format --dry-run --Werror "${files[@]}"
+
   build-and-test:
     runs-on: ubuntu-latest
 
@@ -14,16 +25,21 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get install -y cmake g++ libsdl2-dev librtlsdr-dev
+        run: sudo apt-get install -y cmake g++ libsdl2-dev librtlsdr-dev clang-tidy
 
       - name: Configure
-        run: cmake -B build
+        run: cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Build
         run: cmake --build build --parallel
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      - name: Static analysis (clang-tidy)
+        run: |
+          mapfile -t files < <(find src -name '*.cpp')
+          clang-tidy -p build --quiet --warnings-as-errors='' "${files[@]}"
 
   coverage:
     runs-on: ubuntu-latest
