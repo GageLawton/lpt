@@ -30,6 +30,30 @@ int main()
     assert(ok);
     assert(approx(lat2, lat, 0.1));
 
+    // Global decode (last frame was odd, so last_odd=1)
+    {
+        double lat_odd_decoded, lon_odd_decoded;
+        ok = cpr_decode_global(lat_e, lon_e, lat_o, lon_o, 1, &lat_odd_decoded, &lon_odd_decoded);
+        assert(ok);
+        assert(approx(lat_odd_decoded, 52.2572, 0.05));
+    }
+
+    // Local decode using odd frame with reference close to the expected position
+    {
+        double lat_odd_local, lon_odd_local;
+        ok = cpr_decode_local(lat_o, lon_o, 1, 52.0, 3.5, &lat_odd_local, &lon_odd_local);
+        assert(ok);
+        assert(approx(lat_odd_local, 52.2572, 0.1));
+    }
+
+    // Far reference should still decode or return false gracefully without crashing.
+    {
+        double lat_far = 0.0;
+        double lon_far = 0.0;
+        ok = cpr_decode_local(lat_e, lon_e, 0, -33.8, 151.2, &lat_far, &lon_far);
+        (void)ok;
+    }
+
     printf("test_cpr: all tests passed\n");
     return 0;
 }
